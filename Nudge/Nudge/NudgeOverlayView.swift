@@ -21,26 +21,26 @@ struct NudgeOverlayView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
+            NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 21 : 30)
                 .fill(Color.black.opacity(0.95))
                 .overlay {
                     ZStack {
-                        NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
+                        NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 21 : 30)
                             .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
 
                         if state == .dragging {
-                            NudgeUnifiedSurfaceShape(cornerRadius: 26)
+                            NudgeUnifiedSurfaceShape(cornerRadius: 30)
                                 .strokeBorder(
                                     appleIntelligenceGradient,
-                                    style: StrokeStyle(lineWidth: 1.2, dash: [6, 6])
+                                    style: StrokeStyle(lineWidth: 1.4, dash: [8, 8])
                                 )
                                 .opacity(0.82)
-                                .padding(6)
+                                .padding(8)
                         }
 
                         if isShowingLoadingGlow {
                             NudgeBreathingGlowView(
-                                shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 26 : 28),
+                                shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 30 : 32),
                                 intensity: state == .loading ? 0.34 : 0.38
                             )
                             .padding(state == .loading ? 3 : 0)
@@ -86,15 +86,15 @@ struct NudgeOverlayView: View {
     private var promptInputView: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 46)
+                .frame(height: 64)
 
             gradientPromptField(
                 placeholder: "무엇이든 물어보세요...",
-                fontSize: 15,
+                fontSize: 17,
                 isDisabled: false
             )
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 30)
         .opacity(isInputVisible ? 1 : 0)
         .transition(.opacity)
     }
@@ -102,48 +102,48 @@ struct NudgeOverlayView: View {
     private var draggingView: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 46)
+                .frame(height: 64)
 
             HStack(spacing: 10) {
                 Image(systemName: "photo.badge.arrow.down")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(appleIntelligenceGradient)
 
                 Text("파일을 놓아주세요")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.86))
             }
-            .padding(.horizontal, 16)
-            .frame(height: 38)
+            .padding(.horizontal, 20)
+            .frame(height: 46)
             .frame(maxWidth: .infinity)
             .background(inputBackground)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 30)
         .transition(.opacity)
     }
 
     private var loadingView: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 46)
+                .frame(height: 64)
 
             NudgeBreathingGlowCapsule()
-            .frame(height: 38)
+            .frame(height: 46)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 30)
         .transition(.opacity)
     }
 
     private var resultView: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text("Gemini")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.9))
 
                     Text(model.submittedPrompt)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
                         .foregroundStyle(Color.white.opacity(0.48))
                 }
@@ -188,31 +188,31 @@ struct NudgeOverlayView: View {
 
             followUpInputView
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 22)
-        .padding(.bottom, 18)
+        .padding(.horizontal, 30)
+        .padding(.top, 28)
+        .padding(.bottom, 24)
         .transition(.opacity)
     }
 
     private var resultLoadingView: some View {
         Color.clear
-            .frame(maxWidth: .infinity, minHeight: 150)
+            .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     private var followUpInputView: some View {
         gradientPromptField(
             placeholder: model.isLoading ? "" : "이어서 물어보세요...",
-            fontSize: 14,
+            fontSize: 15,
             isDisabled: model.isLoading
         )
         .opacity(model.isLoading ? 0.62 : 1)
     }
 
     private var inputBackground: some View {
-        RoundedRectangle(cornerRadius: 15, style: .continuous)
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(Color.white.opacity(0.12))
             .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
             }
     }
@@ -241,8 +241,8 @@ struct NudgeOverlayView: View {
                     model.submitPrompt()
                 }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 38)
+        .padding(.horizontal, 18)
+        .frame(height: 46)
         .background(inputBackground)
     }
 
@@ -364,10 +364,10 @@ private struct NudgeBreathingGlowCapsule: View {
             let breath = (sin(phase * 1.75) + 1) / 2
             let drift = (sin(phase * 0.95) + 1) / 2
 
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white.opacity(0.08 + breath * 0.03))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -385,7 +385,7 @@ private struct NudgeBreathingGlowCapsule: View {
                         .padding(.horizontal, 14)
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.12 + breath * 0.10), lineWidth: 1)
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)

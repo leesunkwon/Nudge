@@ -15,7 +15,7 @@ struct NudgeMarkdownText: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(blocks) { block in
                 blockView(for: block)
             }
@@ -29,7 +29,7 @@ struct NudgeMarkdownText: View {
         case let .heading(level, text):
             Text(inlineAttributedString(
                 text,
-                fontSize: level == 1 ? 17 : 15,
+                fontSize: level == 1 ? 19 : 17,
                 regularWeight: .semibold,
                 emphasizedWeight: .bold
             ))
@@ -38,19 +38,19 @@ struct NudgeMarkdownText: View {
                 .padding(.top, level == 1 ? 4 : 2)
 
         case let .paragraph(text):
-            Text(inlineAttributedString(text, fontSize: 14))
-                .lineSpacing(4)
+            Text(inlineAttributedString(text, fontSize: 15))
+                .lineSpacing(5)
                 .foregroundStyle(Color.white.opacity(0.88))
                 .textSelection(.enabled)
 
         case let .listItem(text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.56))
 
-                Text(inlineAttributedString(text, fontSize: 14))
-                    .lineSpacing(4)
+                Text(inlineAttributedString(text, fontSize: 15))
+                    .lineSpacing(5)
                     .foregroundStyle(Color.white.opacity(0.88))
                     .textSelection(.enabled)
             }
@@ -58,18 +58,18 @@ struct NudgeMarkdownText: View {
         case let .code(code):
             ScrollView(.horizontal) {
                 Text(code)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .font(.system(size: 13, weight: .regular, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.9))
                     .textSelection(.enabled)
-                    .padding(12)
+                    .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollIndicators(.hidden)
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.white.opacity(0.08))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
                     }
             }
