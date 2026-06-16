@@ -16,7 +16,7 @@ enum NudgeOverlayState {
         case .normal:
             CGSize(width: 280, height: 42)
         case .hovered:
-            CGSize(width: 340, height: 64)
+            CGSize(width: 560, height: 132)
         }
     }
 }
