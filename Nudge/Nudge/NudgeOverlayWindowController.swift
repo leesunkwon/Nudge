@@ -11,6 +11,7 @@ import SwiftUI
 
 @MainActor
 final class NudgeOverlayWindowController: NSObject {
+    private let topEdgeBleed: CGFloat = 6
     private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45
@@ -25,8 +26,9 @@ final class NudgeOverlayWindowController: NSObject {
     private let overlayModel = NudgeOverlayModel()
 
     private lazy var panel: NSPanel = {
+        let initialFrame = windowFrame(for: overlayState.size)
         let panel = NudgeOverlayPanel(
-            contentRect: NSRect(origin: .zero, size: overlayState.size),
+            contentRect: NSRect(origin: .zero, size: initialFrame.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -43,7 +45,7 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let containerView = NudgeDragDestinationView(frame: NSRect(origin: .zero, size: overlayState.size))
+        let containerView = NudgeDragDestinationView(frame: initialFrame)
         containerView.onDragEntered = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.overlayModel.beginDragging()
@@ -271,13 +273,22 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func targetFrame(for state: NudgeOverlayState, on screen: NSScreen) -> NSRect {
-        let size = state.size
+        let windowSize = windowFrame(for: state.size).size
 
         return NSRect(
-            x: screen.frame.midX - size.width / 2,
-            y: screen.frame.maxY - size.height,
-            width: size.width,
-            height: size.height
+            x: screen.frame.midX - windowSize.width / 2,
+            y: screen.frame.maxY - state.size.height,
+            width: windowSize.width,
+            height: windowSize.height
+        )
+    }
+
+    private func windowFrame(for stateSize: CGSize) -> NSRect {
+        NSRect(
+            x: 0,
+            y: 0,
+            width: stateSize.width,
+            height: stateSize.height + topEdgeBleed
         )
     }
 }
