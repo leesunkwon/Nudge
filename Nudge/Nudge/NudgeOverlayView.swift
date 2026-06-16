@@ -25,13 +25,11 @@ struct NudgeOverlayView: View {
                     TextField("Ask Gemini anything...", text: $prompt)
                         .textFieldStyle(.plain)
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .frame(height: 48)
-                        .background(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(Color.white.opacity(0.1))
-                        )
+                        .foregroundStyle(Color.white.opacity(0.94))
+                        .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
+                        .padding(.horizontal, 20)
+                        .frame(height: 54)
+                        .background(inputBackground)
                         .onSubmit {}
                 }
                 .padding(.horizontal, 28)
@@ -39,5 +37,30 @@ struct NudgeOverlayView: View {
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.78), value: state)
+    }
+
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color.white.opacity(0.18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+            }
+            .overlay(alignment: .bottom) {
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.45, green: 0.76, blue: 1.0).opacity(0.8),
+                                Color(red: 0.68, green: 0.54, blue: 1.0).opacity(0.7)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 2)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 1)
+            }
     }
 }
