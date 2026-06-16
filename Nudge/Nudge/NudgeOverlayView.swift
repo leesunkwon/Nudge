@@ -20,8 +20,20 @@ struct NudgeOverlayView: View {
             NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
                 .fill(Color.black.opacity(0.95))
                 .overlay {
-                    NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    ZStack {
+                        NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+
+                        if state == .dragging {
+                            NudgeUnifiedSurfaceShape(cornerRadius: 26)
+                                .strokeBorder(
+                                    appleIntelligenceGradient,
+                                    style: StrokeStyle(lineWidth: 1.2, dash: [6, 6])
+                                )
+                                .opacity(0.82)
+                                .padding(6)
+                        }
+                    }
                 }
 
             switch state {
@@ -94,15 +106,6 @@ struct NudgeOverlayView: View {
             .background(inputBackground)
         }
         .padding(.horizontal, 18)
-        .overlay {
-            NudgeUnifiedSurfaceShape(cornerRadius: 24)
-                .strokeBorder(
-                    appleIntelligenceGradient,
-                    style: StrokeStyle(lineWidth: 1.2, dash: [5, 5])
-                )
-                .opacity(0.8)
-                .padding(5)
-        }
         .transition(.opacity)
     }
 
