@@ -27,15 +27,18 @@ struct NudgeMarkdownText: View {
     private func blockView(for block: NudgeMarkdownBlock) -> some View {
         switch block.kind {
         case let .heading(level, text):
-            Text(text)
-                .font(.system(size: level == 1 ? 17 : 15, weight: .semibold))
+            Text(inlineAttributedString(
+                text,
+                fontSize: level == 1 ? 17 : 15,
+                regularWeight: .semibold,
+                emphasizedWeight: .bold
+            ))
                 .foregroundStyle(Color.white.opacity(0.94))
                 .textSelection(.enabled)
                 .padding(.top, level == 1 ? 4 : 2)
 
         case let .paragraph(text):
-            Text(text)
-                .font(.system(size: 14, weight: .regular))
+            Text(inlineAttributedString(text, fontSize: 14))
                 .lineSpacing(4)
                 .foregroundStyle(Color.white.opacity(0.88))
                 .textSelection(.enabled)
@@ -46,8 +49,7 @@ struct NudgeMarkdownText: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.56))
 
-                Text(text)
-                    .font(.system(size: 14, weight: .regular))
+                Text(inlineAttributedString(text, fontSize: 14))
                     .lineSpacing(4)
                     .foregroundStyle(Color.white.opacity(0.88))
                     .textSelection(.enabled)
@@ -71,6 +73,20 @@ struct NudgeMarkdownText: View {
                             .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
                     }
             }
+        }
+    }
+
+    private func inlineAttributedString(
+        _ text: String,
+        fontSize: CGFloat,
+        regularWeight: Font.Weight = .regular,
+        emphasizedWeight: Font.Weight = .semibold
+    ) -> AttributedString {
+        let segments = NudgeInlineMarkdownParser.parse(text)
+        return segments.reduce(AttributedString()) { partialText, segment in
+            var nextText = AttributedString(segment.text)
+            nextText.font = .system(size: fontSize, weight: segment.isEmphasized ? emphasizedWeight : regularWeight)
+            return partialText + nextText
         }
     }
 }
@@ -177,5 +193,43 @@ private enum NudgeMarkdownParser {
         }
 
         return nil
+    }
+}
+
+private struct NudgeInlineMarkdownSegment {
+    let text: String
+    let isEmphasized: Bool
+}
+
+private enum NudgeInlineMarkdownParser {
+    static func parse(_ text: String) -> [NudgeInlineMarkdownSegment] {
+        var segments: [NudgeInlineMarkdownSegment] = []
+        var currentText = ""
+        var isEmphasized = false
+        var index = text.startIndex
+
+        func flushCurrentText() {
+            guard !currentText.isEmpty else { return }
+            segments.append(NudgeInlineMarkdownSegment(text: currentText, isEmphasized: isEmphasized))
+            currentText = ""
+        }
+
+        while index < text.endIndex {
+            let nextIndex = text.index(after: index)
+            if nextIndex < text.endIndex,
+               text[index] == "*",
+               text[nextIndex] == "*" {
+                flushCurrentText()
+                isEmphasized.toggle()
+                index = text.index(after: nextIndex)
+                continue
+            }
+
+            currentText.append(text[index])
+            index = nextIndex
+        }
+
+        flushCurrentText()
+        return segments
     }
 }
