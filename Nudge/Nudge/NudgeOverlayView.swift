@@ -54,9 +54,17 @@ struct NudgeOverlayView: View {
                 .frame(height: 32)
                 .allowsHitTesting(false)
 
+            if isShowingLoadingGlow {
+                NudgeTopBreathingGlowStrip()
+                    .frame(height: 32)
+                    .allowsHitTesting(false)
+            }
+
             switch state {
             case .dragging:
                 draggingView
+            case .filePrompt:
+                filePromptView
             case .hovered:
                 promptInputView
             case .loading:
@@ -75,7 +83,7 @@ struct NudgeOverlayView: View {
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
         switch state {
-        case .normal, .dragging, .loading, .result:
+        case .normal, .dragging, .filePrompt, .loading, .result:
             isInputVisible = false
         case .hovered:
             isInputVisible = false
@@ -110,11 +118,11 @@ struct NudgeOverlayView: View {
                 .frame(height: 64)
 
             HStack(spacing: 10) {
-                Image(systemName: "photo.badge.arrow.down")
+                Image(systemName: model.dragPromptIconName)
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(appleIntelligenceGradient)
 
-                Text("파일을 놓아주세요")
+                Text(model.dragPromptText)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.86))
             }
@@ -122,6 +130,49 @@ struct NudgeOverlayView: View {
             .frame(height: 46)
             .frame(maxWidth: .infinity)
             .background(inputBackground)
+        }
+        .padding(.horizontal, 30)
+        .transition(.opacity)
+    }
+
+    private var filePromptView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 52)
+
+            HStack(spacing: 12) {
+                Image(systemName: model.dragPromptIconName)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+
+                gradientPromptField(
+                    placeholder: "\(model.droppedFileName)에게 물어보기...",
+                    fontSize: 16,
+                    isDisabled: false
+                )
+                .frame(maxWidth: .infinity)
+
+                Button {
+                    model.cancelFilePrompt()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 32, height: 46)
+                        .background {
+                            Circle()
+                                .fill(Color.white.opacity(0.13))
+                                .overlay {
+                                    Circle()
+                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                                }
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.white.opacity(0.84))
+                .help("Cancel")
+                .fixedSize()
+            }
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -155,23 +206,20 @@ struct NudgeOverlayView: View {
 
                 Spacer()
 
-                Button {
-                    model.copyResponseToPasteboard()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.white.opacity(0.7))
-                .help("Copy")
+                HStack(spacing: 8) {
+                    resultActionsMenu
 
-                Button {
-                    model.closeResult()
-                } label: {
-                    Image(systemName: "xmark")
+                    headerIconButton(systemName: "doc.on.doc") {
+                        model.copyResponseToPasteboard()
+                    }
+                    .help("Copy")
+
+                    headerIconButton(systemName: "xmark") {
+                        model.closeResult()
+                    }
+                    .help("Close")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.white.opacity(0.7))
-                .help("Close")
+                .fixedSize()
             }
 
             ScrollView {
@@ -213,6 +261,61 @@ struct NudgeOverlayView: View {
         .opacity(model.isLoading ? 0.62 : 1)
     }
 
+    private var resultActionsMenu: some View {
+        Menu {
+            Button("텍스트 파일로 저장") {
+                model.saveResponseAsTextFile()
+            }
+
+            Button("공유") {
+                model.shareResponse()
+            }
+
+            Button("원본 파일 열기") {
+                model.openDroppedFile()
+            }
+            .disabled(!model.canOpenDroppedFile)
+
+            Divider()
+
+            Button("다시 생성") {
+                model.regenerateLastResponse()
+            }
+            .disabled(model.isLoading)
+        } label: {
+            headerIconLabel(systemName: "ellipsis")
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help("More")
+    }
+
+    private func headerIconButton(
+        systemName: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            headerIconLabel(systemName: systemName)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func headerIconLabel(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.86))
+            .frame(width: 30, height: 30)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private var inputBackground: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(Color.white.opacity(0.12))
@@ -243,7 +346,11 @@ struct NudgeOverlayView: View {
                 .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
                 .disabled(isDisabled)
                 .onSubmit {
-                    model.submitPrompt()
+                    if state == .filePrompt {
+                        model.submitFilePrompt()
+                    } else {
+                        model.submitPrompt()
+                    }
                 }
         }
         .padding(.horizontal, 18)
@@ -395,6 +502,34 @@ private struct NudgeBreathingGlowCapsule: View {
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
                 .animation(nil, value: breath)
+        }
+    }
+}
+
+private struct NudgeTopBreathingGlowStrip: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.45) + 1) / 2
+            let drift = (sin(phase * 0.72) + 1) / 2
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.25, green: 0.74, blue: 1.0).opacity(0.16 + breath * 0.10),
+                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.18 + breath * 0.13),
+                            Color(red: 1.0, green: 0.40, blue: 0.80).opacity(0.14 + breath * 0.10),
+                            Color(red: 1.0, green: 0.65, blue: 0.34).opacity(0.12 + breath * 0.08)
+                        ],
+                        startPoint: UnitPoint(x: -0.16 + drift * 0.30, y: 0.5),
+                        endPoint: UnitPoint(x: 0.88 + drift * 0.28, y: 0.5)
+                    )
+                )
+                .blur(radius: 18 + breath * 5)
+                .opacity(0.82)
+                .blendMode(.screen)
+                .clipped()
         }
     }
 }

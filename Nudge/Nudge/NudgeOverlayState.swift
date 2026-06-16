@@ -10,6 +10,7 @@ import Foundation
 enum NudgeOverlayState {
     case normal
     case dragging
+    case filePrompt
     case hovered
     case loading
     case result
@@ -19,6 +20,8 @@ enum NudgeOverlayState {
         case .normal:
             CGSize(width: 260, height: 38)
         case .dragging:
+            CGSize(width: 540, height: 144)
+        case .filePrompt:
             CGSize(width: 540, height: 144)
         case .hovered:
             CGSize(width: 540, height: 144)
