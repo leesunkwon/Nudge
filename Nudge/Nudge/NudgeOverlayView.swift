@@ -25,6 +25,8 @@ struct NudgeOverlayView: View {
                 }
 
             switch state {
+            case .dragging:
+                draggingView
             case .hovered:
                 promptInputView
             case .loading:
@@ -43,7 +45,7 @@ struct NudgeOverlayView: View {
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
         switch state {
-        case .normal, .loading, .result:
+        case .normal, .dragging, .loading, .result:
             isInputVisible = false
         case .hovered:
             isInputVisible = false
@@ -69,6 +71,29 @@ struct NudgeOverlayView: View {
         }
         .padding(.horizontal, 18)
         .opacity(isInputVisible ? 1 : 0)
+        .transition(.opacity)
+    }
+
+    private var draggingView: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "photo.badge.arrow.down")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(appleIntelligenceGradient)
+
+            Text("이미지를 놓아주세요")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.86))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            NudgeUnifiedSurfaceShape(cornerRadius: 24)
+                .strokeBorder(
+                    appleIntelligenceGradient,
+                    style: StrokeStyle(lineWidth: 1.2, dash: [5, 5])
+                )
+                .opacity(0.8)
+                .padding(5)
+        }
         .transition(.opacity)
     }
 

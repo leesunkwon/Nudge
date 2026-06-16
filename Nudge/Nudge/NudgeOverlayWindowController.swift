@@ -37,14 +37,29 @@ final class NudgeOverlayWindowController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = false
         panel.isMovable = false
         panel.isOpaque = false
         panel.level = .statusBar
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let containerView = NSView(frame: NSRect(origin: .zero, size: overlayState.size))
+        let containerView = NudgeDragDestinationView(frame: NSRect(origin: .zero, size: overlayState.size))
+        containerView.onDragEntered = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.overlayModel.beginDragging()
+            }
+        }
+        containerView.onDragExited = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.overlayModel.cancelDragging()
+            }
+        }
+        containerView.onFileDropped = { [weak self] url in
+            Task { @MainActor [weak self] in
+                self?.overlayModel.submitDroppedFile(at: url)
+            }
+        }
         containerView.autoresizesSubviews = true
 
         let rootView = NudgeOverlayView(model: overlayModel)
@@ -93,9 +108,9 @@ final class NudgeOverlayWindowController: NSObject {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = overlayState == .hovered ? 0.46 : frameAnimationDuration
+                context.duration = overlayState == .hovered || overlayState == .dragging ? 0.46 : frameAnimationDuration
                 context.allowsImplicitAnimation = true
-                context.timingFunction = overlayState == .hovered ? .nudgeExpand : .nudgeCollapse
+                context.timingFunction = overlayState == .hovered || overlayState == .dragging ? .nudgeExpand : .nudgeCollapse
                 panel.animator().setFrame(frame, display: true)
             }
         } else {
@@ -142,6 +157,8 @@ final class NudgeOverlayWindowController: NSObject {
             guard activationFrame.contains(mouseLocation) else { return }
             pendingCollapseWorkItem?.cancel()
             transition(to: .hovered)
+        case .dragging:
+            pendingCollapseWorkItem?.cancel()
         case .hovered:
             if retentionFrame.contains(mouseLocation) {
                 pendingCollapseWorkItem?.cancel()
@@ -175,7 +192,7 @@ final class NudgeOverlayWindowController: NSObject {
         guard nextState != overlayState else { return }
 
         overlayState = nextState
-        panel.ignoresMouseEvents = nextState == .normal
+        panel.ignoresMouseEvents = false
         if nextState == .hovered {
             panel.makeKey()
             startHoverStateCheckTimer()
@@ -214,7 +231,7 @@ final class NudgeOverlayWindowController: NSObject {
         overlayState = nextState
         pendingCollapseWorkItem?.cancel()
         pendingCollapseWorkItem = nil
-        panel.ignoresMouseEvents = nextState == .normal
+        panel.ignoresMouseEvents = false
 
         if nextState == .normal {
             stopHoverStateCheckTimer()
@@ -225,6 +242,8 @@ final class NudgeOverlayWindowController: NSObject {
 
         if nextState == .hovered {
             startHoverStateCheckTimer()
+        } else {
+            stopHoverStateCheckTimer()
         }
 
         positionPanel(animated: true)
@@ -297,5 +316,71 @@ private extension CAMediaTimingFunction {
 
     static var nudgeCollapse: CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.33, 0.0, 0.2, 1.0)
+    }
+}
+
+private final class NudgeDragDestinationView: NSView {
+    var onDragEntered: (() -> Void)?
+    var onDragExited: (() -> Void)?
+    var onFileDropped: ((URL) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard firstFileURL(from: sender.draggingPasteboard) != nil else {
+            return []
+        }
+
+        onDragEntered?()
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        firstFileURL(from: sender.draggingPasteboard) == nil ? [] : .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDragExited?()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        guard let destinationWindow = sender.draggingDestinationWindow else {
+            onDragExited?()
+            return
+        }
+
+        if !destinationWindow.frame.contains(NSEvent.mouseLocation) {
+            onDragExited?()
+        }
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
+            onDragExited?()
+            return false
+        }
+
+        onFileDropped?(fileURL)
+        return true
+    }
+
+    private func firstFileURL(from pasteboard: NSPasteboard) -> URL? {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            return urls.first
+        }
+
+        guard let fileURLString = pasteboard.string(forType: .fileURL) else {
+            return nil
+        }
+
+        return URL(string: fileURLString)
     }
 }

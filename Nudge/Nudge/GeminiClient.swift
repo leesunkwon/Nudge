@@ -45,6 +45,22 @@ struct GeminiClient {
     }
 
     func generateText(contents: [GeminiConversationContent]) async throws -> String {
+        try await generateContent(contents: contents.map(GeminiContent.init))
+    }
+
+    func analyzeImage(data: Data, mimeType: String, prompt: String) async throws -> String {
+        try await generateContent(contents: [
+            GeminiContent(
+                role: GeminiConversationContent.Role.user.rawValue,
+                parts: [
+                    GeminiPart(text: prompt),
+                    GeminiPart(inlineData: GeminiInlineData(mimeType: mimeType, data: data.base64EncodedString()))
+                ]
+            )
+        ])
+    }
+
+    private func generateContent(contents: [GeminiContent]) async throws -> String {
         let apiKey = try resolveAPIKey()
 
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
@@ -55,7 +71,7 @@ struct GeminiClient {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: contents.map(GeminiContent.init)))
+        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: contents))
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -123,7 +139,23 @@ private struct GeminiContent: Codable {
 }
 
 private struct GeminiPart: Codable {
-    let text: String
+    let text: String?
+    let inlineData: GeminiInlineData?
+
+    init(text: String) {
+        self.text = text
+        self.inlineData = nil
+    }
+
+    init(inlineData: GeminiInlineData) {
+        self.text = nil
+        self.inlineData = inlineData
+    }
+}
+
+private struct GeminiInlineData: Codable {
+    let mimeType: String
+    let data: String
 }
 
 private struct GeminiResponse: Decodable {

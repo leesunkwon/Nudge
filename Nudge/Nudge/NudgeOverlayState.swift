@@ -9,6 +9,7 @@ import Foundation
 
 enum NudgeOverlayState {
     case normal
+    case dragging
     case hovered
     case loading
     case result
@@ -17,6 +18,8 @@ enum NudgeOverlayState {
         switch self {
         case .normal:
             CGSize(width: 280, height: 42)
+        case .dragging:
+            CGSize(width: 320, height: 68)
         case .hovered:
             CGSize(width: 380, height: 104)
         case .loading:
