@@ -31,7 +31,7 @@ struct GeminiClient {
         }
     }
 
-    private let model = "gemini-3.1-flash-lite"
+    private let model = "gemini-3.5-flash"
     private let session: URLSession
 
     nonisolated init(session: URLSession = .shared) {
