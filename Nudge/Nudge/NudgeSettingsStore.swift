@@ -1,0 +1,212 @@
+//
+//  NudgeSettingsStore.swift
+//  Nudge
+//
+//  Created by Codex on 6/16/26.
+//
+
+import Combine
+import Foundation
+import SwiftUI
+
+@MainActor
+final class NudgeSettingsStore: ObservableObject {
+    enum GeminiModel: String, CaseIterable, Identifiable {
+        case flashLite = "gemini-3.1-flash-lite"
+        case flash = "gemini-2.5-flash"
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .flashLite:
+                "Gemini 3.1 Flash-Lite"
+            case .flash:
+                "Gemini 2.5 Flash"
+            }
+        }
+    }
+
+    enum AnimationSpeed: String, CaseIterable, Identifiable {
+        case smooth
+        case fast
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .smooth:
+                "부드럽게"
+            case .fast:
+                "빠르게"
+            }
+        }
+
+        var frameDuration: TimeInterval {
+            switch self {
+            case .smooth:
+                0.36
+            case .fast:
+                0.22
+            }
+        }
+
+        var expandDuration: TimeInterval {
+            switch self {
+            case .smooth:
+                0.46
+            case .fast:
+                0.30
+            }
+        }
+
+        var swiftUIAnimation: Animation {
+            switch self {
+            case .smooth:
+                .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.34)
+            case .fast:
+                .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22)
+            }
+        }
+    }
+
+    enum GlowIntensity: String, CaseIterable, Identifiable {
+        case low
+        case normal
+        case high
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .low:
+                "낮음"
+            case .normal:
+                "기본"
+            case .high:
+                "높음"
+            }
+        }
+
+        var multiplier: Double {
+            switch self {
+            case .low:
+                0.62
+            case .normal:
+                1.0
+            case .high:
+                1.32
+            }
+        }
+    }
+
+    @Published var selectedModel: GeminiModel {
+        didSet { defaults.set(selectedModel.rawValue, forKey: Keys.selectedModel) }
+    }
+
+    @Published var textSystemPrompt: String {
+        didSet { defaults.set(textSystemPrompt, forKey: Keys.textSystemPrompt) }
+    }
+
+    @Published var imageAnalysisPrompt: String {
+        didSet { defaults.set(imageAnalysisPrompt, forKey: Keys.imageAnalysisPrompt) }
+    }
+
+    @Published var pdfAnalysisPrompt: String {
+        didSet { defaults.set(pdfAnalysisPrompt, forKey: Keys.pdfAnalysisPrompt) }
+    }
+
+    @Published var emptyFileQuestionPrompt: String {
+        didSet { defaults.set(emptyFileQuestionPrompt, forKey: Keys.emptyFileQuestionPrompt) }
+    }
+
+    @Published var hoverActivationPadding: Double {
+        didSet { defaults.set(hoverActivationPadding, forKey: Keys.hoverActivationPadding) }
+    }
+
+    @Published var hoverCollapseDelay: Double {
+        didSet { defaults.set(hoverCollapseDelay, forKey: Keys.hoverCollapseDelay) }
+    }
+
+    @Published var keepsHoverOpenWhileTyping: Bool {
+        didSet { defaults.set(keepsHoverOpenWhileTyping, forKey: Keys.keepsHoverOpenWhileTyping) }
+    }
+
+    @Published var animationSpeed: AnimationSpeed {
+        didSet { defaults.set(animationSpeed.rawValue, forKey: Keys.animationSpeed) }
+    }
+
+    @Published var glowIntensity: GlowIntensity {
+        didSet { defaults.set(glowIntensity.rawValue, forKey: Keys.glowIntensity) }
+    }
+
+    @Published private(set) var isAPIKeyConfigured: Bool
+
+    private let defaults: UserDefaults
+    private let keychainStore: NudgeKeychainStore
+
+    init(
+        defaults: UserDefaults = .standard,
+        keychainStore: NudgeKeychainStore = NudgeKeychainStore()
+    ) {
+        self.defaults = defaults
+        self.keychainStore = keychainStore
+
+        selectedModel = GeminiModel(rawValue: defaults.string(forKey: Keys.selectedModel) ?? "") ?? .flashLite
+        textSystemPrompt = defaults.string(forKey: Keys.textSystemPrompt) ?? Defaults.textSystemPrompt
+        imageAnalysisPrompt = defaults.string(forKey: Keys.imageAnalysisPrompt) ?? Defaults.imageAnalysisPrompt
+        pdfAnalysisPrompt = defaults.string(forKey: Keys.pdfAnalysisPrompt) ?? Defaults.pdfAnalysisPrompt
+        emptyFileQuestionPrompt = defaults.string(forKey: Keys.emptyFileQuestionPrompt) ?? Defaults.emptyFileQuestionPrompt
+        hoverActivationPadding = defaults.object(forKey: Keys.hoverActivationPadding) as? Double ?? 18
+        hoverCollapseDelay = defaults.object(forKey: Keys.hoverCollapseDelay) as? Double ?? 0.45
+        keepsHoverOpenWhileTyping = defaults.object(forKey: Keys.keepsHoverOpenWhileTyping) as? Bool ?? true
+        animationSpeed = AnimationSpeed(rawValue: defaults.string(forKey: Keys.animationSpeed) ?? "") ?? .smooth
+        glowIntensity = GlowIntensity(rawValue: defaults.string(forKey: Keys.glowIntensity) ?? "") ?? .normal
+        isAPIKeyConfigured = keychainStore.loadAPIKey() != nil
+    }
+
+    func loadAPIKey() -> String? {
+        keychainStore.loadAPIKey()
+    }
+
+    func saveAPIKey(_ apiKey: String) throws {
+        try keychainStore.saveAPIKey(apiKey)
+        refreshAPIKeyStatus()
+    }
+
+    func deleteAPIKey() {
+        keychainStore.deleteAPIKey()
+        refreshAPIKeyStatus()
+    }
+
+    func refreshAPIKeyStatus() {
+        isAPIKeyConfigured = keychainStore.loadAPIKey() != nil
+    }
+
+    func resetPrompts() {
+        textSystemPrompt = Defaults.textSystemPrompt
+        imageAnalysisPrompt = Defaults.imageAnalysisPrompt
+        pdfAnalysisPrompt = Defaults.pdfAnalysisPrompt
+        emptyFileQuestionPrompt = Defaults.emptyFileQuestionPrompt
+    }
+
+    private enum Keys {
+        static let selectedModel = "selectedModel"
+        static let textSystemPrompt = "textSystemPrompt"
+        static let imageAnalysisPrompt = "imageAnalysisPrompt"
+        static let pdfAnalysisPrompt = "pdfAnalysisPrompt"
+        static let emptyFileQuestionPrompt = "emptyFileQuestionPrompt"
+        static let hoverActivationPadding = "hoverActivationPadding"
+        static let hoverCollapseDelay = "hoverCollapseDelay"
+        static let keepsHoverOpenWhileTyping = "keepsHoverOpenWhileTyping"
+        static let animationSpeed = "animationSpeed"
+        static let glowIntensity = "glowIntensity"
+    }
+
+    enum Defaults {
+        static let textSystemPrompt = "당신은 macOS 유틸리티 Nudge 안에서 동작하는 간결하고 실용적인 AI 어시스턴트입니다. 사용자의 작업 흐름을 끊지 않도록 한국어로 핵심부터 답변해 주세요."
+        static let imageAnalysisPrompt = "이 이미지를 한국어로 자세히 분석해 주세요. 핵심 내용, 눈에 띄는 요소, 필요한 후속 작업을 간결하게 정리해 주세요."
+        static let pdfAnalysisPrompt = "이 PDF 문서를 한국어로 자세히 분석해 주세요. 핵심 요약, 주요 주장이나 내용, 표와 차트에서 읽을 수 있는 정보, 필요한 후속 작업을 간결하게 정리해 주세요."
+        static let emptyFileQuestionPrompt = "이 파일에서 핵심만 요약해 주세요."
+    }
+}
