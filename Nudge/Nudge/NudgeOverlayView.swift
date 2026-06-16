@@ -140,15 +140,42 @@ struct NudgeOverlayView: View {
     private var filePromptView: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 52)
+                .frame(height: 60)
 
             HStack(spacing: 12) {
-                Image(systemName: model.dragPromptIconName)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                filePreviewTile
 
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(model.droppedFileDisplayName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.9))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 6) {
+                        Text(model.droppedFileKindLabel)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(appleIntelligenceGradient)
+
+                        Circle()
+                            .fill(Color.white.opacity(0.25))
+                            .frame(width: 3, height: 3)
+
+                        Text(model.droppedFileSizeText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.52))
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            .frame(height: 48)
+
+            HStack(spacing: 12) {
                 gradientPromptField(
-                    placeholder: "\(model.droppedFileName)에게 물어보기...",
+                    placeholder: "\(model.droppedFileDisplayName)에게 물어보기...",
                     fontSize: 16,
                     isDisabled: false
                 )
@@ -175,9 +202,35 @@ struct NudgeOverlayView: View {
                 .help("Cancel")
                 .fixedSize()
             }
+            .padding(.top, 12)
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
+    }
+
+    private var filePreviewTile: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                }
+
+            if let thumbnail = model.droppedFilePreviewThumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                Image(systemName: model.droppedFilePreviewIconName)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipped()
     }
 
     private var loadingView: some View {

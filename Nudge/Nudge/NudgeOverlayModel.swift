@@ -22,6 +22,11 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var dragPromptIconName = "doc.badge.arrow.up"
     @Published private(set) var dragPromptText = "파일을 놓아주세요"
     @Published private(set) var droppedFileName = ""
+    @Published private(set) var droppedFileDisplayName = ""
+    @Published private(set) var droppedFileSizeText = ""
+    @Published private(set) var droppedFilePreviewIconName = "doc"
+    @Published private(set) var droppedFilePreviewThumbnail: NSImage?
+    @Published private(set) var droppedFileKindLabel = ""
     @Published private(set) var canOpenDroppedFile = false
 
     private let geminiClient: GeminiClient
@@ -101,12 +106,14 @@ final class NudgeOverlayModel: ObservableObject {
             return
         }
 
+        let displayName = url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent
         pendingDroppedFile = DroppedFileContext(
             url: url,
-            displayName: url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent,
+            displayName: displayName,
             payloadKind: payloadKind
         )
         droppedFileName = pendingDroppedFile?.displayName ?? ""
+        updateDroppedFilePreview(url: url, displayName: displayName, payloadKind: payloadKind)
         submittedPrompt = droppedFileName
         prompt = ""
         resetResponseOutput()
@@ -418,7 +425,37 @@ final class NudgeOverlayModel: ObservableObject {
         pendingDroppedFile = nil
         resultDroppedFileURL = nil
         droppedFileName = ""
+        droppedFileDisplayName = ""
+        droppedFileSizeText = ""
+        droppedFilePreviewIconName = "doc"
+        droppedFilePreviewThumbnail = nil
+        droppedFileKindLabel = ""
         canOpenDroppedFile = false
+    }
+
+    private func updateDroppedFilePreview(
+        url: URL,
+        displayName: String,
+        payloadKind: DropFilePayloadKind
+    ) {
+        droppedFileDisplayName = displayName
+        droppedFileSizeText = fileSizeText(for: url)
+        droppedFilePreviewIconName = payloadKind.previewIconName
+        droppedFileKindLabel = payloadKind.kindLabel
+
+        switch payloadKind {
+        case .image:
+            droppedFilePreviewThumbnail = NSImage(contentsOf: url)
+        case .pdf:
+            droppedFilePreviewThumbnail = nil
+        }
+    }
+
+    private func fileSizeText(for url: URL) -> String {
+        let byteCount = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        guard byteCount > 0 else { return "크기 알 수 없음" }
+
+        return ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
     }
 
     private func defaultSaveFileName() -> String {
@@ -493,6 +530,24 @@ private enum DropFilePayloadKind {
             "photo.badge.arrow.down"
         case .pdf:
             "doc.text.magnifyingglass"
+        }
+    }
+
+    var previewIconName: String {
+        switch self {
+        case .image:
+            "photo"
+        case .pdf:
+            "doc.text.magnifyingglass"
+        }
+    }
+
+    var kindLabel: String {
+        switch self {
+        case .image:
+            "이미지"
+        case .pdf:
+            "PDF"
         }
     }
 }
