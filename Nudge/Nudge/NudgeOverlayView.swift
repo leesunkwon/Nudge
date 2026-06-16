@@ -171,12 +171,15 @@ struct NudgeOverlayView: View {
             ScrollView {
                 if model.isLoading {
                     resultLoadingView
-                } else {
-                    Text(resultMessage)
+                } else if let errorMessage = model.errorMessage {
+                    Text(errorMessage)
                         .font(.system(size: 14, weight: .regular))
                         .lineSpacing(4)
                         .textSelection(.enabled)
-                        .foregroundStyle(resultTextColor)
+                        .foregroundStyle(Color(red: 1.0, green: 0.56, blue: 0.56))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    NudgeMarkdownText(markdown: model.displayedResponseText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -212,14 +215,6 @@ struct NudgeOverlayView: View {
             isDisabled: model.isLoading
         )
         .opacity(model.isLoading ? 0.62 : 1)
-    }
-
-    private var resultMessage: String {
-        model.errorMessage ?? model.responseText
-    }
-
-    private var resultTextColor: Color {
-        model.errorMessage == nil ? Color.white.opacity(0.88) : Color(red: 1.0, green: 0.56, blue: 0.56)
     }
 
     private var inputBackground: some View {

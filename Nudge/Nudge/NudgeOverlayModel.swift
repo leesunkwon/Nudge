@@ -16,11 +16,13 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var prompt = ""
     @Published var submittedPrompt = ""
     @Published var responseText = ""
+    @Published var displayedResponseText = ""
     @Published var errorMessage: String?
     @Published var isLoading = false
 
     private let geminiClient: GeminiClient
     private var conversationHistory: [GeminiConversationContent] = []
+    private var typingTask: Task<Void, Never>?
 
     init(geminiClient: GeminiClient = GeminiClient()) {
         self.geminiClient = geminiClient
@@ -33,7 +35,7 @@ final class NudgeOverlayModel: ObservableObject {
         let shouldKeepResultPanelOpen = state == .result
         submittedPrompt = trimmedPrompt
         prompt = ""
-        responseText = ""
+        resetResponseOutput()
         errorMessage = nil
         isLoading = true
         state = shouldKeepResultPanelOpen ? .result : .loading
@@ -47,20 +49,26 @@ final class NudgeOverlayModel: ObservableObject {
                 conversationHistory.append(GeminiConversationContent.userText(trimmedPrompt))
                 conversationHistory.append(GeminiConversationContent.modelText(response))
                 responseText = response
+                displayedResponseText = ""
                 errorMessage = nil
             } catch {
                 responseText = ""
+                displayedResponseText = ""
                 errorMessage = error.localizedDescription
             }
 
             isLoading = false
             state = .result
+            if errorMessage == nil {
+                startTypingResponse(responseText)
+            }
         }
     }
 
     func beginDragging() {
         guard !isLoading, state != .result else { return }
         prompt = ""
+        cancelTypingResponse()
         errorMessage = nil
         state = .dragging
     }
@@ -76,7 +84,7 @@ final class NudgeOverlayModel: ObservableObject {
         let displayName = url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent
         submittedPrompt = displayName
         prompt = ""
-        responseText = ""
+        resetResponseOutput()
         errorMessage = nil
         isLoading = true
         conversationHistory.removeAll()
@@ -94,19 +102,26 @@ final class NudgeOverlayModel: ObservableObject {
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
                 responseText = response
+                displayedResponseText = ""
                 errorMessage = nil
             } catch {
                 responseText = ""
+                displayedResponseText = ""
                 errorMessage = error.localizedDescription
             }
 
             isLoading = false
             state = .result
+            if errorMessage == nil {
+                startTypingResponse(responseText)
+            }
         }
     }
 
     func closeResult() {
+        cancelTypingResponse()
         responseText = ""
+        displayedResponseText = ""
         errorMessage = nil
         submittedPrompt = ""
         prompt = ""
@@ -121,6 +136,39 @@ final class NudgeOverlayModel: ObservableObject {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(textToCopy, forType: .string)
+    }
+
+    private func resetResponseOutput() {
+        cancelTypingResponse()
+        responseText = ""
+        displayedResponseText = ""
+    }
+
+    private func cancelTypingResponse() {
+        typingTask?.cancel()
+        typingTask = nil
+    }
+
+    private func startTypingResponse(_ text: String) {
+        cancelTypingResponse()
+        displayedResponseText = ""
+        guard !text.isEmpty else { return }
+
+        typingTask = Task { @MainActor [weak self] in
+            var typedText = ""
+
+            for character in text {
+                guard !Task.isCancelled else { return }
+
+                typedText.append(character)
+                self?.displayedResponseText = typedText
+
+                let delay: UInt64 = character == "\n" ? 12_000_000 : 5_000_000
+                try? await Task.sleep(nanoseconds: delay)
+            }
+
+            self?.typingTask = nil
+        }
     }
 
     private func loadDropFilePayload(from url: URL) throws -> DropFilePayload {
