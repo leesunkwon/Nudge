@@ -15,6 +15,10 @@ struct NudgeOverlayView: View {
         model.state
     }
 
+    private var isShowingLoadingGlow: Bool {
+        state == .loading || (state == .result && model.isLoading)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
@@ -32,6 +36,15 @@ struct NudgeOverlayView: View {
                                 )
                                 .opacity(0.82)
                                 .padding(6)
+                        }
+
+                        if isShowingLoadingGlow {
+                            NudgeBreathingGlowView(
+                                shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 26 : 28),
+                                intensity: state == .loading ? 0.34 : 0.24
+                            )
+                            .padding(state == .loading ? 3 : 6)
+                            .allowsHitTesting(false)
                         }
                     }
                 }
@@ -114,20 +127,8 @@ struct NudgeOverlayView: View {
             Spacer()
                 .frame(height: 46)
 
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(Color.white.opacity(0.9))
-
-                Text("Thinking")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.8))
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
+            NudgeBreathingGlowCapsule()
             .frame(height: 38)
-            .background(inputBackground)
         }
         .padding(.horizontal, 18)
         .transition(.opacity)
@@ -194,23 +195,13 @@ struct NudgeOverlayView: View {
     }
 
     private var resultLoadingView: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Color.white.opacity(0.9))
-
-            Text("Thinking")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.78))
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+        NudgeBreathingGlowPanel()
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
     }
 
     private var followUpInputView: some View {
         gradientPromptField(
-            placeholder: model.isLoading ? "Gemini가 생각하는 중..." : "이어서 물어보세요...",
+            placeholder: model.isLoading ? "" : "이어서 물어보세요...",
             fontSize: 14,
             isDisabled: model.isLoading
         )
@@ -309,5 +300,127 @@ private struct NudgeUnifiedSurfaceShape: InsettableShape {
         var shape = self
         shape.insetAmount += amount
         return shape
+    }
+}
+
+private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
+    let shape: GlowShape
+    let intensity: Double
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.45) + 1) / 2
+            let drift = (sin(phase * 0.72) + 1) / 2
+
+            shape
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.25, green: 0.74, blue: 1.0).opacity(0.25 + breath * 0.18),
+                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.30 + breath * 0.20),
+                            Color(red: 1.0, green: 0.40, blue: 0.80).opacity(0.22 + breath * 0.18),
+                            Color(red: 1.0, green: 0.65, blue: 0.34).opacity(0.18 + breath * 0.14)
+                        ],
+                        startPoint: UnitPoint(x: -0.20 + drift * 0.34, y: 0.05),
+                        endPoint: UnitPoint(x: 0.86 + drift * 0.30, y: 1.0)
+                    )
+                )
+                .scaleEffect(1.0 + breath * 0.018)
+                .blur(radius: 18 + breath * 7)
+                .opacity(intensity)
+                .blendMode(.screen)
+                .overlay {
+                    shape
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.35, green: 0.78, blue: 1.0).opacity(0.20 + breath * 0.28),
+                                    Color(red: 0.95, green: 0.48, blue: 0.94).opacity(0.28 + breath * 0.22),
+                                    Color(red: 1.0, green: 0.74, blue: 0.36).opacity(0.16 + breath * 0.18)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            lineWidth: 1.1 + breath * 0.6
+                        )
+                        .opacity(0.54)
+                        .blendMode(.screen)
+                }
+        }
+    }
+}
+
+private struct NudgeBreathingGlowCapsule: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.75) + 1) / 2
+            let drift = (sin(phase * 0.95) + 1) / 2
+
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(Color.white.opacity(0.08 + breath * 0.03))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.23, green: 0.76, blue: 1.0).opacity(0.20),
+                                    Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.28 + breath * 0.14),
+                                    Color(red: 1.0, green: 0.42, blue: 0.80).opacity(0.22 + breath * 0.12),
+                                    Color(red: 1.0, green: 0.68, blue: 0.34).opacity(0.18)
+                                ],
+                                startPoint: UnitPoint(x: -0.25 + drift * 0.44, y: 0.5),
+                                endPoint: UnitPoint(x: 0.84 + drift * 0.36, y: 0.5)
+                            )
+                        )
+                        .blur(radius: 13 + breath * 3)
+                        .blendMode(.screen)
+                        .padding(.horizontal, 14)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12 + breath * 0.10), lineWidth: 1)
+                }
+                .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
+                .animation(nil, value: breath)
+        }
+    }
+}
+
+private struct NudgeBreathingGlowPanel: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.30) + 1) / 2
+            let drift = (sin(phase * 0.64) + 1) / 2
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.035 + breath * 0.025))
+
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.20, green: 0.73, blue: 1.0).opacity(0.16),
+                                Color(red: 0.56, green: 0.44, blue: 1.0).opacity(0.26 + breath * 0.12),
+                                Color(red: 1.0, green: 0.42, blue: 0.82).opacity(0.22 + breath * 0.12),
+                                Color(red: 1.0, green: 0.66, blue: 0.36).opacity(0.16)
+                            ],
+                            startPoint: UnitPoint(x: -0.24 + drift * 0.38, y: 0.0),
+                            endPoint: UnitPoint(x: 0.90 + drift * 0.30, y: 1.0)
+                        )
+                    )
+                    .blur(radius: 24 + breath * 8)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .blendMode(.screen)
+
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06 + breath * 0.08), lineWidth: 1)
+            }
+            .scaleEffect(0.992 + breath * 0.008)
+        }
     }
 }
