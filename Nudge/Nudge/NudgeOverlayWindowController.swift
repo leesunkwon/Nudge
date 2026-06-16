@@ -11,7 +11,7 @@ import SwiftUI
 
 @MainActor
 final class NudgeOverlayWindowController: NSObject {
-    private let topEdgeBleed: CGFloat = 6
+    private let topEdgeBleed: CGFloat = 14
     private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45

@@ -49,6 +49,11 @@ struct NudgeOverlayView: View {
                     }
                 }
 
+            Rectangle()
+                .fill(Color.black.opacity(0.95))
+                .frame(height: 32)
+                .allowsHitTesting(false)
+
             switch state {
             case .dragging:
                 draggingView
