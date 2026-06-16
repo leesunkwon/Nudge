@@ -279,7 +279,7 @@ struct NudgeOverlayView: View {
         } label: {
             headerIconLabel(systemName: "ellipsis")
         }
-        .menuStyle(.button)
+        .buttonStyle(.plain)
         .fixedSize()
         .help("More")
     }
