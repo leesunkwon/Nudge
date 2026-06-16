@@ -8,8 +8,12 @@
 import SwiftUI
 
 struct NudgeOverlayView: View {
-    let state: NudgeOverlayState
+    @ObservedObject var model: NudgeOverlayModel
     @State private var prompt = ""
+
+    private var state: NudgeOverlayState {
+        model.state
+    }
 
     var body: some View {
         ZStack {
@@ -33,10 +37,18 @@ struct NudgeOverlayView: View {
                         .onSubmit {}
                 }
                 .padding(.horizontal, 28)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity
+                            .combined(with: .scale(scale: 0.94, anchor: .top))
+                            .combined(with: .move(edge: .top)),
+                        removal: .opacity
+                            .combined(with: .scale(scale: 0.98, anchor: .top))
+                    )
+                )
             }
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.78), value: state)
+        .animation(.interactiveSpring(response: 0.5, dampingFraction: 0.86, blendDuration: 0.12), value: state)
     }
 
     private var inputBackground: some View {

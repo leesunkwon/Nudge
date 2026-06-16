@@ -18,6 +18,7 @@ final class NudgeOverlayWindowController: NSObject {
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var overlayState: NudgeOverlayState = .normal
+    private let overlayModel = NudgeOverlayModel()
 
     private lazy var panel: NSPanel = {
         let panel = NudgeOverlayPanel(
@@ -38,7 +39,7 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let rootView = NudgeOverlayView(state: overlayState)
+        let rootView = NudgeOverlayView(model: overlayModel)
             .frame(width: overlayState.size.width, height: overlayState.size.height)
 
         panel.contentView = NSHostingView(rootView: rootView)
@@ -77,9 +78,9 @@ final class NudgeOverlayWindowController: NSObject {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = frameAnimationDuration
+                context.duration = overlayState == .hovered ? 0.46 : frameAnimationDuration
                 context.allowsImplicitAnimation = true
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.timingFunction = overlayState == .hovered ? .nudgeExpand : .nudgeCollapse
                 panel.animator().setFrame(frame, display: true)
             }
         } else {
@@ -156,16 +157,15 @@ final class NudgeOverlayWindowController: NSObject {
         guard nextState != overlayState else { return }
 
         overlayState = nextState
+        withAnimation(.interactiveSpring(response: 0.5, dampingFraction: 0.86, blendDuration: 0.12)) {
+            overlayModel.state = nextState
+        }
         panel.ignoresMouseEvents = nextState == .normal
         if nextState == .hovered {
             panel.makeKey()
         } else {
             panel.resignKey()
         }
-
-        let rootView = NudgeOverlayView(state: nextState)
-            .frame(width: nextState.size.width, height: nextState.size.height)
-        panel.contentView = NSHostingView(rootView: rootView)
 
         positionPanel(animated: true)
     }
@@ -197,5 +197,15 @@ private final class NudgeOverlayPanel: NSPanel {
 
     override var canBecomeMain: Bool {
         false
+    }
+}
+
+private extension CAMediaTimingFunction {
+    static var nudgeExpand: CAMediaTimingFunction {
+        CAMediaTimingFunction(controlPoints: 0.19, 1.0, 0.22, 1.0)
+    }
+
+    static var nudgeCollapse: CAMediaTimingFunction {
+        CAMediaTimingFunction(controlPoints: 0.33, 0.0, 0.2, 1.0)
     }
 }
