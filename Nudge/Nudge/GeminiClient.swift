@@ -31,7 +31,7 @@ struct GeminiClient {
         }
     }
 
-    private let model = "gemini-3.5-flash"
+    private let model = "gemini-3.1-flash-lite"
     private let session: URLSession
 
     nonisolated init(session: URLSession = .shared) {
@@ -40,11 +40,25 @@ struct GeminiClient {
 
     func generateText(prompt: String) async throws -> String {
         try await generateText(contents: [
-            GeminiConversationContent(role: .user, text: prompt)
+            GeminiConversationContent.userText(prompt)
         ])
     }
 
     func generateText(contents: [GeminiConversationContent]) async throws -> String {
+        try await generateContent(contents: contents.map(GeminiContent.init))
+    }
+
+    func analyzeFile(data: Data, mimeType: String, prompt: String) async throws -> String {
+        try await generateText(contents: [
+            GeminiConversationContent.userFile(
+                prompt: prompt,
+                data: data,
+                mimeType: mimeType
+            )
+        ])
+    }
+
+    private func generateContent(contents: [GeminiContent]) async throws -> String {
         let apiKey = try resolveAPIKey()
 
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
@@ -55,7 +69,7 @@ struct GeminiClient {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: contents.map(GeminiContent.init)))
+        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: contents))
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -98,7 +112,30 @@ struct GeminiConversationContent {
     }
 
     let role: Role
-    let text: String
+    let parts: [GeminiConversationPart]
+
+    static func userText(_ text: String) -> GeminiConversationContent {
+        GeminiConversationContent(role: .user, parts: [.text(text)])
+    }
+
+    static func modelText(_ text: String) -> GeminiConversationContent {
+        GeminiConversationContent(role: .model, parts: [.text(text)])
+    }
+
+    static func userFile(prompt: String, data: Data, mimeType: String) -> GeminiConversationContent {
+        GeminiConversationContent(
+            role: .user,
+            parts: [
+                .text(prompt),
+                .inlineData(data.base64EncodedString(), mimeType: mimeType)
+            ]
+        )
+    }
+}
+
+enum GeminiConversationPart {
+    case text(String)
+    case inlineData(String, mimeType: String)
 }
 
 private struct GeminiRequest: Encodable {
@@ -109,21 +146,49 @@ private struct GeminiContent: Codable {
     let role: String?
     let parts: [GeminiPart]
 
-    init(role: String? = nil, parts: [GeminiPart]) {
+    nonisolated init(role: String? = nil, parts: [GeminiPart]) {
         self.role = role
         self.parts = parts
     }
 
-    init(conversationContent: GeminiConversationContent) {
+    nonisolated init(conversationContent: GeminiConversationContent) {
         self.role = conversationContent.role.rawValue
-        self.parts = [
-            GeminiPart(text: conversationContent.text)
-        ]
+        self.parts = conversationContent.parts.map(GeminiPart.init)
     }
 }
 
 private struct GeminiPart: Codable {
-    let text: String
+    let text: String?
+    let inlineData: GeminiInlineData?
+
+    nonisolated init(text: String) {
+        self.text = text
+        self.inlineData = nil
+    }
+
+    nonisolated init(inlineData: GeminiInlineData) {
+        self.text = nil
+        self.inlineData = inlineData
+    }
+
+    nonisolated init(conversationPart: GeminiConversationPart) {
+        switch conversationPart {
+        case let .text(text):
+            self.init(text: text)
+        case let .inlineData(data, mimeType):
+            self.init(inlineData: GeminiInlineData(mimeType: mimeType, data: data))
+        }
+    }
+}
+
+private struct GeminiInlineData: Codable {
+    let mimeType: String
+    let data: String
+
+    nonisolated init(mimeType: String, data: String) {
+        self.mimeType = mimeType
+        self.data = data
+    }
 }
 
 private struct GeminiResponse: Decodable {
