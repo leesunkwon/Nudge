@@ -79,16 +79,26 @@ struct NudgeOverlayView: View {
     }
 
     private var loadingView: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Color.white.opacity(0.9))
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 46)
 
-            Text("Thinking")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.78))
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.white.opacity(0.9))
+
+                Text("Thinking")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.8))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(inputBackground)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 18)
         .transition(.opacity)
     }
 
