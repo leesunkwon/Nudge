@@ -22,7 +22,10 @@ final class SettingsWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 640, height: 680))
         window.minSize = NSSize(width: 560, height: 560)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = .black
         window.isReleasedWhenClosed = false
+        window.titlebarAppearsTransparent = true
         window.center()
 
         super.init(window: window)
