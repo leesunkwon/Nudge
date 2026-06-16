@@ -19,6 +19,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var isLoading = false
 
     private let geminiClient: GeminiClient
+    private var conversationHistory: [GeminiConversationContent] = []
 
     init(geminiClient: GeminiClient = GeminiClient()) {
         self.geminiClient = geminiClient
@@ -38,7 +39,12 @@ final class NudgeOverlayModel: ObservableObject {
 
         Task {
             do {
-                let response = try await geminiClient.generateText(prompt: trimmedPrompt)
+                let requestContents = conversationHistory + [
+                    GeminiConversationContent(role: .user, text: trimmedPrompt)
+                ]
+                let response = try await geminiClient.generateText(contents: requestContents)
+                conversationHistory.append(GeminiConversationContent(role: .user, text: trimmedPrompt))
+                conversationHistory.append(GeminiConversationContent(role: .model, text: response))
                 responseText = response
                 errorMessage = nil
             } catch {
@@ -55,7 +61,9 @@ final class NudgeOverlayModel: ObservableObject {
         responseText = ""
         errorMessage = nil
         submittedPrompt = ""
+        prompt = ""
         isLoading = false
+        conversationHistory.removeAll()
         state = .normal
     }
 

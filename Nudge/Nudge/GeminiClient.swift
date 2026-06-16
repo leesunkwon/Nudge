@@ -39,6 +39,12 @@ struct GeminiClient {
     }
 
     func generateText(prompt: String) async throws -> String {
+        try await generateText(contents: [
+            GeminiConversationContent(role: .user, text: prompt)
+        ])
+    }
+
+    func generateText(contents: [GeminiConversationContent]) async throws -> String {
         let apiKey = try resolveAPIKey()
 
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
@@ -49,11 +55,7 @@ struct GeminiClient {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: [
-            GeminiContent(parts: [
-                GeminiPart(text: prompt)
-            ])
-        ]))
+        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: contents.map(GeminiContent.init)))
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -89,12 +91,35 @@ struct GeminiClient {
     }
 }
 
+struct GeminiConversationContent {
+    enum Role: String {
+        case user
+        case model
+    }
+
+    let role: Role
+    let text: String
+}
+
 private struct GeminiRequest: Encodable {
     let contents: [GeminiContent]
 }
 
 private struct GeminiContent: Codable {
+    let role: String?
     let parts: [GeminiPart]
+
+    init(role: String? = nil, parts: [GeminiPart]) {
+        self.role = role
+        self.parts = parts
+    }
+
+    init(conversationContent: GeminiConversationContent) {
+        self.role = conversationContent.role.rawValue
+        self.parts = [
+            GeminiPart(text: conversationContent.text)
+        ]
+    }
 }
 
 private struct GeminiPart: Codable {
