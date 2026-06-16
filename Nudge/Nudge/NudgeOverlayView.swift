@@ -16,92 +16,42 @@ struct NudgeOverlayView: View {
     }
 
     var body: some View {
-        ZStack {
-            overlaySurface
+        ZStack(alignment: .top) {
+            NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
+                .fill(Color.black.opacity(0.95))
+                .overlay {
+                    NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 20 : 26)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                }
 
             if state == .hovered {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 74)
+                    Spacer()
+                        .frame(height: 46)
 
                     TextField("Ask Gemini anything...", text: $prompt)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.94))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.92))
                         .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
-                        .padding(.horizontal, 22)
-                        .frame(height: 58)
+                        .padding(.horizontal, 16)
+                        .frame(height: 38)
                         .background(inputBackground)
                         .onSubmit {}
-
-                    Spacer(minLength: 36)
                 }
-                .padding(.horizontal, 42)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity
-                            .combined(with: .scale(scale: 0.94, anchor: .top)),
-                        removal: .opacity
-                            .combined(with: .scale(scale: 0.98, anchor: .top))
-                    )
-                )
+                .padding(.horizontal, 18)
+                .transition(.opacity)
             }
         }
-        .animation(.interactiveSpring(response: 0.5, dampingFraction: 0.86, blendDuration: 0.12), value: state)
-    }
-
-    @ViewBuilder
-    private var overlaySurface: some View {
-        if state == .normal {
-            NudgeUnifiedSurfaceShape(cornerRadius: 20)
-                .fill(Color.black.opacity(0.94))
-                .overlay {
-                    NudgeUnifiedSurfaceShape(cornerRadius: 20)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                }
-        } else {
-            NudgeUnifiedSurfaceShape(cornerRadius: 46)
-                .fill(Color.black.opacity(0.96))
-                .overlay {
-                    NudgeUnifiedSurfaceShape(cornerRadius: 46)
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-                }
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [
-                            Color.clear,
-                            Color(red: 0.4, green: 0.72, blue: 1.0).opacity(0.14)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 72)
-                    .clipShape(NudgeUnifiedSurfaceShape(cornerRadius: 46))
-                }
-        }
+        .animation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08), value: state)
     }
 
     private var inputBackground: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
+        RoundedRectangle(cornerRadius: 15, style: .continuous)
             .fill(Color.white.opacity(0.12))
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
-            }
-            .overlay(alignment: .bottom) {
-                Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.45, green: 0.76, blue: 1.0).opacity(0.8),
-                                Color(red: 0.68, green: 0.54, blue: 1.0).opacity(0.7)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(height: 2)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 1)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
             }
     }
 }

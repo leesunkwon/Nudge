@@ -39,10 +39,10 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let rootView = NudgeOverlayView(model: overlayModel)
-            .frame(width: overlayState.size.width, height: overlayState.size.height)
-
-        panel.contentView = NSHostingView(rootView: rootView)
+        let hostingView = NSHostingView(rootView: NudgeOverlayView(model: overlayModel))
+        hostingView.frame = NSRect(origin: .zero, size: overlayState.size)
+        hostingView.autoresizingMask = [.width, .height]
+        panel.contentView = hostingView
 
         return panel
     }()
@@ -157,7 +157,7 @@ final class NudgeOverlayWindowController: NSObject {
         guard nextState != overlayState else { return }
 
         overlayState = nextState
-        withAnimation(.interactiveSpring(response: 0.5, dampingFraction: 0.86, blendDuration: 0.12)) {
+        withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
             overlayModel.state = nextState
         }
         panel.ignoresMouseEvents = nextState == .normal
