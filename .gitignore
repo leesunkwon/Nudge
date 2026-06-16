@@ -2,6 +2,9 @@
 *.xcuserstate
 xcuserdata/
 
+# macOS metadata
+.DS_Store
+
 # Local secrets
 Secrets.xcconfig
 *.local.xcconfig
