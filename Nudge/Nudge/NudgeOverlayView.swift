@@ -61,17 +61,11 @@ struct NudgeOverlayView: View {
             Spacer()
                 .frame(height: 46)
 
-            TextField("Ask Gemini anything...", text: $model.prompt)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
-                .padding(.horizontal, 16)
-                .frame(height: 38)
-                .background(inputBackground)
-                .onSubmit {
-                    model.submitPrompt()
-                }
+            gradientPromptField(
+                placeholder: "무엇이든 물어보세요...",
+                fontSize: 15,
+                isDisabled: false
+            )
         }
         .padding(.horizontal, 18)
         .opacity(isInputVisible ? 1 : 0)
@@ -175,19 +169,12 @@ struct NudgeOverlayView: View {
     }
 
     private var followUpInputView: some View {
-        TextField(model.isLoading ? "Waiting for Gemini..." : "Ask a follow-up...", text: $model.prompt)
-            .textFieldStyle(.plain)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Color.white.opacity(0.92))
-            .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
-            .padding(.horizontal, 16)
-            .frame(height: 38)
-            .background(inputBackground)
-            .disabled(model.isLoading)
-            .opacity(model.isLoading ? 0.62 : 1)
-            .onSubmit {
-                model.submitPrompt()
-            }
+        gradientPromptField(
+            placeholder: model.isLoading ? "Gemini가 생각하는 중..." : "이어서 물어보세요...",
+            fontSize: 14,
+            isDisabled: model.isLoading
+        )
+        .opacity(model.isLoading ? 0.62 : 1)
     }
 
     private var resultMessage: String {
@@ -205,6 +192,48 @@ struct NudgeOverlayView: View {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
             }
+    }
+
+    private func gradientPromptField(
+        placeholder: String,
+        fontSize: CGFloat,
+        isDisabled: Bool
+    ) -> some View {
+        ZStack(alignment: .leading) {
+            if model.prompt.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: fontSize, weight: .medium))
+                    .foregroundStyle(appleIntelligenceGradient)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+            }
+
+            TextField("", text: $model.prompt)
+                .textFieldStyle(.plain)
+                .font(.system(size: fontSize, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
+                .disabled(isDisabled)
+                .onSubmit {
+                    model.submitPrompt()
+                }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 38)
+        .background(inputBackground)
+    }
+
+    private var appleIntelligenceGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.25, green: 0.73, blue: 1.0),
+                Color(red: 0.57, green: 0.45, blue: 1.0),
+                Color(red: 1.0, green: 0.42, blue: 0.78),
+                Color(red: 1.0, green: 0.64, blue: 0.36)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 }
 

@@ -15,8 +15,10 @@ final class NudgeOverlayWindowController: NSObject {
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45
     private let hoverContentRevealDelay: TimeInterval = 0.08
+    private let hoverStateCheckInterval: TimeInterval = 0.12
     private let frameAnimationDuration: TimeInterval = 0.36
     private var pendingCollapseWorkItem: DispatchWorkItem?
+    private var hoverStateCheckTimer: Timer?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
@@ -71,6 +73,7 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     deinit {
+        hoverStateCheckTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -142,6 +145,7 @@ final class NudgeOverlayWindowController: NSObject {
         case .hovered:
             if retentionFrame.contains(mouseLocation) {
                 pendingCollapseWorkItem?.cancel()
+                pendingCollapseWorkItem = nil
             } else {
                 scheduleHoverCollapse()
             }
@@ -174,6 +178,7 @@ final class NudgeOverlayWindowController: NSObject {
         panel.ignoresMouseEvents = nextState == .normal
         if nextState == .hovered {
             panel.makeKey()
+            startHoverStateCheckTimer()
             positionPanel(animated: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + hoverContentRevealDelay) { [weak self] in
                 Task { @MainActor [weak self] in
@@ -184,6 +189,7 @@ final class NudgeOverlayWindowController: NSObject {
                 }
             }
         } else {
+            stopHoverStateCheckTimer()
             withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
                 overlayModel.state = nextState
             }
@@ -207,15 +213,40 @@ final class NudgeOverlayWindowController: NSObject {
 
         overlayState = nextState
         pendingCollapseWorkItem?.cancel()
+        pendingCollapseWorkItem = nil
         panel.ignoresMouseEvents = nextState == .normal
 
         if nextState == .normal {
+            stopHoverStateCheckTimer()
             panel.resignKey()
         } else {
             panel.makeKey()
         }
 
+        if nextState == .hovered {
+            startHoverStateCheckTimer()
+        }
+
         positionPanel(animated: true)
+    }
+
+    private func startHoverStateCheckTimer() {
+        guard hoverStateCheckTimer == nil else { return }
+
+        let timer = Timer(timeInterval: hoverStateCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, overlayState == .hovered else { return }
+                updateHoverState(for: NSEvent.mouseLocation)
+            }
+        }
+
+        RunLoop.main.add(timer, forMode: .common)
+        hoverStateCheckTimer = timer
+    }
+
+    private func stopHoverStateCheckTimer() {
+        hoverStateCheckTimer?.invalidate()
+        hoverStateCheckTimer = nil
     }
 
     private var activationFrame: NSRect {
