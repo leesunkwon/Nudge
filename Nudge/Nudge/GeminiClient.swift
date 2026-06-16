@@ -40,7 +40,7 @@ struct GeminiClient {
 
     func generateText(prompt: String) async throws -> String {
         try await generateText(contents: [
-            GeminiConversationContent(role: .user, text: prompt)
+            GeminiConversationContent.userText(prompt)
         ])
     }
 
@@ -49,13 +49,11 @@ struct GeminiClient {
     }
 
     func analyzeFile(data: Data, mimeType: String, prompt: String) async throws -> String {
-        try await generateContent(contents: [
-            GeminiContent(
-                role: GeminiConversationContent.Role.user.rawValue,
-                parts: [
-                    GeminiPart(text: prompt),
-                    GeminiPart(inlineData: GeminiInlineData(mimeType: mimeType, data: data.base64EncodedString()))
-                ]
+        try await generateText(contents: [
+            GeminiConversationContent.userFile(
+                prompt: prompt,
+                data: data,
+                mimeType: mimeType
             )
         ])
     }
@@ -114,7 +112,30 @@ struct GeminiConversationContent {
     }
 
     let role: Role
-    let text: String
+    let parts: [GeminiConversationPart]
+
+    static func userText(_ text: String) -> GeminiConversationContent {
+        GeminiConversationContent(role: .user, parts: [.text(text)])
+    }
+
+    static func modelText(_ text: String) -> GeminiConversationContent {
+        GeminiConversationContent(role: .model, parts: [.text(text)])
+    }
+
+    static func userFile(prompt: String, data: Data, mimeType: String) -> GeminiConversationContent {
+        GeminiConversationContent(
+            role: .user,
+            parts: [
+                .text(prompt),
+                .inlineData(data.base64EncodedString(), mimeType: mimeType)
+            ]
+        )
+    }
+}
+
+enum GeminiConversationPart {
+    case text(String)
+    case inlineData(String, mimeType: String)
 }
 
 private struct GeminiRequest: Encodable {
@@ -125,16 +146,14 @@ private struct GeminiContent: Codable {
     let role: String?
     let parts: [GeminiPart]
 
-    init(role: String? = nil, parts: [GeminiPart]) {
+    nonisolated init(role: String? = nil, parts: [GeminiPart]) {
         self.role = role
         self.parts = parts
     }
 
-    init(conversationContent: GeminiConversationContent) {
+    nonisolated init(conversationContent: GeminiConversationContent) {
         self.role = conversationContent.role.rawValue
-        self.parts = [
-            GeminiPart(text: conversationContent.text)
-        ]
+        self.parts = conversationContent.parts.map(GeminiPart.init)
     }
 }
 
@@ -142,20 +161,34 @@ private struct GeminiPart: Codable {
     let text: String?
     let inlineData: GeminiInlineData?
 
-    init(text: String) {
+    nonisolated init(text: String) {
         self.text = text
         self.inlineData = nil
     }
 
-    init(inlineData: GeminiInlineData) {
+    nonisolated init(inlineData: GeminiInlineData) {
         self.text = nil
         self.inlineData = inlineData
+    }
+
+    nonisolated init(conversationPart: GeminiConversationPart) {
+        switch conversationPart {
+        case let .text(text):
+            self.init(text: text)
+        case let .inlineData(data, mimeType):
+            self.init(inlineData: GeminiInlineData(mimeType: mimeType, data: data))
+        }
     }
 }
 
 private struct GeminiInlineData: Codable {
     let mimeType: String
     let data: String
+
+    nonisolated init(mimeType: String, data: String) {
+        self.mimeType = mimeType
+        self.data = data
+    }
 }
 
 private struct GeminiResponse: Decodable {

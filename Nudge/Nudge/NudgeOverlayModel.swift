@@ -41,11 +41,11 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 let requestContents = conversationHistory + [
-                    GeminiConversationContent(role: .user, text: trimmedPrompt)
+                    GeminiConversationContent.userText(trimmedPrompt)
                 ]
                 let response = try await geminiClient.generateText(contents: requestContents)
-                conversationHistory.append(GeminiConversationContent(role: .user, text: trimmedPrompt))
-                conversationHistory.append(GeminiConversationContent(role: .model, text: response))
+                conversationHistory.append(GeminiConversationContent.userText(trimmedPrompt))
+                conversationHistory.append(GeminiConversationContent.modelText(response))
                 responseText = response
                 errorMessage = nil
             } catch {
@@ -85,11 +85,14 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 let filePayload = try loadDropFilePayload(from: url)
-                let response = try await geminiClient.analyzeFile(
+                let fileContent = GeminiConversationContent.userFile(
+                    prompt: filePayload.analysisPrompt,
                     data: filePayload.data,
-                    mimeType: filePayload.mimeType,
-                    prompt: filePayload.analysisPrompt
+                    mimeType: filePayload.mimeType
                 )
+                let response = try await geminiClient.generateText(contents: [fileContent])
+                conversationHistory.append(fileContent)
+                conversationHistory.append(GeminiConversationContent.modelText(response))
                 responseText = response
                 errorMessage = nil
             } catch {
