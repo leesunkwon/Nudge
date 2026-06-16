@@ -62,7 +62,7 @@ struct NudgeOverlayView: View {
                 EmptyView()
             }
         }
-        .animation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08), value: state)
+        .animation(.nudgeSurfaceResize, value: state)
         .onChange(of: state) { _, newState in
             updateInputVisibility(for: newState)
         }
@@ -257,6 +257,12 @@ struct NudgeOverlayView: View {
             startPoint: .leading,
             endPoint: .trailing
         )
+    }
+}
+
+private extension Animation {
+    static var nudgeSurfaceResize: Animation {
+        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.34)
     }
 }
 

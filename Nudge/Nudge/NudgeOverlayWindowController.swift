@@ -14,7 +14,6 @@ final class NudgeOverlayWindowController: NSObject {
     private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45
-    private let hoverContentRevealDelay: TimeInterval = 0.08
     private let hoverStateCheckInterval: TimeInterval = 0.12
     private let frameAnimationDuration: TimeInterval = 0.36
     private var pendingCollapseWorkItem: DispatchWorkItem?
@@ -196,18 +195,13 @@ final class NudgeOverlayWindowController: NSObject {
         if nextState == .hovered {
             panel.makeKey()
             startHoverStateCheckTimer()
-            positionPanel(animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + hoverContentRevealDelay) { [weak self] in
-                Task { @MainActor [weak self] in
-                    guard let self, overlayState == .hovered else { return }
-                    withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
-                        self.overlayModel.state = .hovered
-                    }
-                }
+            withAnimation(.nudgeSurfaceResize) {
+                overlayModel.state = .hovered
             }
+            positionPanel(animated: true)
         } else {
             stopHoverStateCheckTimer()
-            withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
+            withAnimation(.nudgeSurfaceResize) {
                 overlayModel.state = nextState
             }
             panel.resignKey()
@@ -316,6 +310,12 @@ private extension CAMediaTimingFunction {
 
     static var nudgeCollapse: CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.33, 0.0, 0.2, 1.0)
+    }
+}
+
+private extension Animation {
+    static var nudgeSurfaceResize: Animation {
+        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.34)
     }
 }
 
