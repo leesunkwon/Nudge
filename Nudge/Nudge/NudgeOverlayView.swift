@@ -10,6 +10,7 @@ import SwiftUI
 struct NudgeOverlayView: View {
     @ObservedObject var model: NudgeOverlayModel
     @State private var prompt = ""
+    @State private var isInputVisible = false
 
     private var state: NudgeOverlayState {
         model.state
@@ -40,10 +41,29 @@ struct NudgeOverlayView: View {
                         .onSubmit {}
                 }
                 .padding(.horizontal, 18)
+                .opacity(isInputVisible ? 1 : 0)
                 .transition(.opacity)
             }
         }
         .animation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08), value: state)
+        .onChange(of: state) { _, newState in
+            updateInputVisibility(for: newState)
+        }
+    }
+
+    private func updateInputVisibility(for state: NudgeOverlayState) {
+        switch state {
+        case .normal:
+            isInputVisible = false
+        case .hovered:
+            isInputVisible = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                guard self.state == .hovered else { return }
+                withAnimation(.easeOut(duration: 0.16)) {
+                    isInputVisible = true
+                }
+            }
+        }
     }
 
     private var inputBackground: some View {

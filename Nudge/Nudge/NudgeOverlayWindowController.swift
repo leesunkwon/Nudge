@@ -13,6 +13,7 @@ final class NudgeOverlayWindowController: NSObject {
     private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45
+    private let hoverContentRevealDelay: TimeInterval = 0.08
     private let frameAnimationDuration: TimeInterval = 0.36
     private var pendingCollapseWorkItem: DispatchWorkItem?
     private var localMouseMonitor: Any?
@@ -157,17 +158,25 @@ final class NudgeOverlayWindowController: NSObject {
         guard nextState != overlayState else { return }
 
         overlayState = nextState
-        withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
-            overlayModel.state = nextState
-        }
         panel.ignoresMouseEvents = nextState == .normal
         if nextState == .hovered {
             panel.makeKey()
+            positionPanel(animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + hoverContentRevealDelay) { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, overlayState == .hovered else { return }
+                    withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
+                        self.overlayModel.state = .hovered
+                    }
+                }
+            }
         } else {
+            withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
+                overlayModel.state = nextState
+            }
             panel.resignKey()
+            positionPanel(animated: true)
         }
-
-        positionPanel(animated: true)
     }
 
     private var activationFrame: NSRect {
@@ -202,7 +211,7 @@ private final class NudgeOverlayPanel: NSPanel {
 
 private extension CAMediaTimingFunction {
     static var nudgeExpand: CAMediaTimingFunction {
-        CAMediaTimingFunction(controlPoints: 0.19, 1.0, 0.22, 1.0)
+        CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1.0)
     }
 
     static var nudgeCollapse: CAMediaTimingFunction {
