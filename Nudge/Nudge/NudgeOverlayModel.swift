@@ -19,9 +19,16 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published private(set) var dragPromptIconName = "doc.badge.arrow.up"
+    @Published private(set) var dragPromptText = "파일을 놓아주세요"
+    @Published private(set) var droppedFileName = ""
+    @Published private(set) var canOpenDroppedFile = false
 
     private let geminiClient: GeminiClient
     private var conversationHistory: [GeminiConversationContent] = []
+    private var pendingDroppedFile: DroppedFileContext?
+    private var resultDroppedFileURL: URL?
+    private var lastRequest: LastRequest?
     private var typingTask: Task<Void, Never>?
 
     init(geminiClient: GeminiClient = GeminiClient()) {
@@ -42,12 +49,15 @@ final class NudgeOverlayModel: ObservableObject {
 
         Task {
             do {
-                let requestContents = conversationHistory + [
+                let baseHistory = conversationHistory
+                let requestContents = baseHistory + [
                     GeminiConversationContent.userText(trimmedPrompt)
                 ]
                 let response = try await geminiClient.generateText(contents: requestContents)
-                conversationHistory.append(GeminiConversationContent.userText(trimmedPrompt))
+                let userContent = GeminiConversationContent.userText(trimmedPrompt)
+                conversationHistory.append(userContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
+                lastRequest = .text(prompt: trimmedPrompt, baseHistory: baseHistory)
                 responseText = response
                 displayedResponseText = ""
                 errorMessage = nil
@@ -65,11 +75,12 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
-    func beginDragging() {
+    func beginDragging(url: URL) {
         guard !isLoading, state != .result else { return }
         prompt = ""
         cancelTypingResponse()
         errorMessage = nil
+        updateDragPresentation(for: url)
         state = .dragging
     }
 
@@ -81,8 +92,30 @@ final class NudgeOverlayModel: ObservableObject {
     func submitDroppedFile(at url: URL) {
         guard !isLoading else { return }
 
-        let displayName = url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent
-        submittedPrompt = displayName
+        guard let payloadKind = dropFilePayloadKind(for: url) else {
+            showUnsupportedDrop()
+            return
+        }
+
+        pendingDroppedFile = DroppedFileContext(
+            url: url,
+            displayName: url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent,
+            payloadKind: payloadKind
+        )
+        droppedFileName = pendingDroppedFile?.displayName ?? ""
+        submittedPrompt = droppedFileName
+        prompt = ""
+        resetResponseOutput()
+        errorMessage = nil
+        state = .filePrompt
+    }
+
+    func submitFilePrompt() {
+        guard !isLoading, let droppedFile = pendingDroppedFile else { return }
+
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalPrompt = trimmedPrompt.isEmpty ? droppedFile.payloadKind.analysisPrompt : trimmedPrompt
+        submittedPrompt = "\(droppedFile.displayName) - \(finalPrompt)"
         prompt = ""
         resetResponseOutput()
         errorMessage = nil
@@ -92,15 +125,19 @@ final class NudgeOverlayModel: ObservableObject {
 
         Task {
             do {
-                let filePayload = try loadDropFilePayload(from: url)
+                let fileRequest = try loadFileRequest(from: droppedFile, prompt: finalPrompt)
                 let fileContent = GeminiConversationContent.userFile(
-                    prompt: filePayload.analysisPrompt,
-                    data: filePayload.data,
-                    mimeType: filePayload.mimeType
+                    prompt: fileRequest.prompt,
+                    data: fileRequest.data,
+                    mimeType: fileRequest.mimeType
                 )
-                let response = try await geminiClient.generateText(contents: [fileContent])
+                let baseHistory = conversationHistory
+                let response = try await geminiClient.generateText(contents: baseHistory + [fileContent])
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
+                lastRequest = .file(context: droppedFile, prompt: finalPrompt, baseHistory: baseHistory)
+                resultDroppedFileURL = droppedFile.url
+                canOpenDroppedFile = true
                 responseText = response
                 displayedResponseText = ""
                 errorMessage = nil
@@ -118,6 +155,13 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
+    func cancelFilePrompt() {
+        guard state == .filePrompt else { return }
+        clearDroppedFileState()
+        prompt = ""
+        state = .normal
+    }
+
     func closeResult() {
         cancelTypingResponse()
         responseText = ""
@@ -127,6 +171,8 @@ final class NudgeOverlayModel: ObservableObject {
         prompt = ""
         isLoading = false
         conversationHistory.removeAll()
+        clearDroppedFileState()
+        lastRequest = nil
         state = .normal
     }
 
@@ -136,6 +182,81 @@ final class NudgeOverlayModel: ObservableObject {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(textToCopy, forType: .string)
+    }
+
+    func saveResponseAsTextFile() {
+        let textToSave = errorMessage ?? responseText
+        guard !textToSave.isEmpty else { return }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.plainText]
+        savePanel.canCreateDirectories = true
+        savePanel.nameFieldStringValue = defaultSaveFileName()
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            try? textToSave.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    func shareResponse() {
+        let textToShare = errorMessage ?? responseText
+        guard !textToShare.isEmpty,
+              let contentView = NSApp.keyWindow?.contentView ?? NSApp.mainWindow?.contentView else { return }
+
+        let picker = NSSharingServicePicker(items: [textToShare])
+        picker.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .minY)
+    }
+
+    func openDroppedFile() {
+        guard let resultDroppedFileURL else { return }
+        NSWorkspace.shared.open(resultDroppedFileURL)
+    }
+
+    func regenerateLastResponse() {
+        guard !isLoading, let lastRequest else { return }
+
+        resetResponseOutput()
+        errorMessage = nil
+        isLoading = true
+        state = .result
+
+        Task {
+            do {
+                switch lastRequest {
+                case let .text(prompt, baseHistory):
+                    submittedPrompt = prompt
+                    let userContent = GeminiConversationContent.userText(prompt)
+                    let response = try await geminiClient.generateText(contents: baseHistory + [userContent])
+                    conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
+                    responseText = response
+                case let .file(context, prompt, baseHistory):
+                    submittedPrompt = "\(context.displayName) - \(prompt)"
+                    let fileRequest = try loadFileRequest(from: context, prompt: prompt)
+                    let fileContent = GeminiConversationContent.userFile(
+                        prompt: fileRequest.prompt,
+                        data: fileRequest.data,
+                        mimeType: fileRequest.mimeType
+                    )
+                    let response = try await geminiClient.generateText(contents: baseHistory + [fileContent])
+                    conversationHistory = baseHistory + [fileContent, GeminiConversationContent.modelText(response)]
+                    resultDroppedFileURL = context.url
+                    canOpenDroppedFile = true
+                    responseText = response
+                }
+
+                displayedResponseText = ""
+                errorMessage = nil
+            } catch {
+                responseText = ""
+                displayedResponseText = ""
+                errorMessage = error.localizedDescription
+            }
+
+            isLoading = false
+            if errorMessage == nil {
+                startTypingResponse(responseText)
+            }
+        }
     }
 
     private func resetResponseOutput() {
@@ -171,22 +292,18 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
-    private func loadDropFilePayload(from url: URL) throws -> DropFilePayload {
-        guard let payloadKind = dropFilePayloadKind(for: url) else {
-            throw DropAnalysisError.unsupportedFile
-        }
-
-        let didStartAccessing = url.startAccessingSecurityScopedResource()
+    private func loadFileRequest(from context: DroppedFileContext, prompt: String) throws -> DropFileRequest {
+        let didStartAccessing = context.url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
-                url.stopAccessingSecurityScopedResource()
+                context.url.stopAccessingSecurityScopedResource()
             }
         }
 
-        return DropFilePayload(
-            data: try Data(contentsOf: url),
-            mimeType: payloadKind.mimeType,
-            analysisPrompt: payloadKind.analysisPrompt
+        return DropFileRequest(
+            data: try Data(contentsOf: context.url),
+            mimeType: context.payloadKind.mimeType,
+            prompt: prompt
         )
     }
 
@@ -243,12 +360,60 @@ final class NudgeOverlayModel: ObservableObject {
             nil
         }
     }
+
+    private func updateDragPresentation(for url: URL) {
+        guard let payloadKind = dropFilePayloadKind(for: url) else {
+            dragPromptIconName = "exclamationmark.triangle"
+            dragPromptText = "지원하지 않는 파일입니다"
+            return
+        }
+
+        dragPromptIconName = payloadKind.iconName
+        dragPromptText = payloadKind.dropPromptText
+    }
+
+    private func showUnsupportedDrop() {
+        dragPromptIconName = "exclamationmark.triangle"
+        dragPromptText = "지원하지 않는 파일입니다"
+        state = .dragging
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let self, state == .dragging else { return }
+            state = .normal
+        }
+    }
+
+    private func clearDroppedFileState() {
+        pendingDroppedFile = nil
+        resultDroppedFileURL = nil
+        droppedFileName = ""
+        canOpenDroppedFile = false
+    }
+
+    private func defaultSaveFileName() -> String {
+        let baseName = submittedPrompt.isEmpty ? "Nudge Response" : submittedPrompt
+        let sanitizedName = baseName
+            .components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>"))
+            .joined(separator: "-")
+        return "\(String(sanitizedName.prefix(48))).txt"
+    }
 }
 
-private struct DropFilePayload {
+private struct DropFileRequest {
     let data: Data
     let mimeType: String
-    let analysisPrompt: String
+    let prompt: String
+}
+
+private struct DroppedFileContext {
+    let url: URL
+    let displayName: String
+    let payloadKind: DropFilePayloadKind
+}
+
+private enum LastRequest {
+    case text(prompt: String, baseHistory: [GeminiConversationContent])
+    case file(context: DroppedFileContext, prompt: String, baseHistory: [GeminiConversationContent])
 }
 
 private enum DropFilePayloadKind {
@@ -272,15 +437,22 @@ private enum DropFilePayloadKind {
             "이 PDF 문서를 한국어로 자세히 분석해 주세요. 핵심 요약, 주요 주장이나 내용, 표와 차트에서 읽을 수 있는 정보, 필요한 후속 작업을 간결하게 정리해 주세요."
         }
     }
-}
 
-private enum DropAnalysisError: LocalizedError {
-    case unsupportedFile
-
-    var errorDescription: String? {
+    var dropPromptText: String {
         switch self {
-        case .unsupportedFile:
-            "현재는 이미지와 PDF 파일만 분석할 수 있습니다. JPG, PNG, WebP, HEIC 이미지 또는 PDF를 드롭해 주세요."
+        case .image:
+            "이미지를 놓아주세요"
+        case .pdf:
+            "PDF를 놓아주세요"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .image:
+            "photo.badge.arrow.down"
+        case .pdf:
+            "doc.text.magnifyingglass"
         }
     }
 }

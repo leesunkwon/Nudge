@@ -57,6 +57,8 @@ struct NudgeOverlayView: View {
             switch state {
             case .dragging:
                 draggingView
+            case .filePrompt:
+                filePromptView
             case .hovered:
                 promptInputView
             case .loading:
@@ -75,7 +77,7 @@ struct NudgeOverlayView: View {
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
         switch state {
-        case .normal, .dragging, .loading, .result:
+        case .normal, .dragging, .filePrompt, .loading, .result:
             isInputVisible = false
         case .hovered:
             isInputVisible = false
@@ -110,11 +112,11 @@ struct NudgeOverlayView: View {
                 .frame(height: 64)
 
             HStack(spacing: 10) {
-                Image(systemName: "photo.badge.arrow.down")
+                Image(systemName: model.dragPromptIconName)
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(appleIntelligenceGradient)
 
-                Text("파일을 놓아주세요")
+                Text(model.dragPromptText)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.86))
             }
@@ -122,6 +124,37 @@ struct NudgeOverlayView: View {
             .frame(height: 46)
             .frame(maxWidth: .infinity)
             .background(inputBackground)
+        }
+        .padding(.horizontal, 30)
+        .transition(.opacity)
+    }
+
+    private var filePromptView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 52)
+
+            HStack(spacing: 12) {
+                Image(systemName: model.dragPromptIconName)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+
+                gradientPromptField(
+                    placeholder: "\(model.droppedFileName)에게 물어보기...",
+                    fontSize: 16,
+                    isDisabled: false
+                )
+
+                Button {
+                    model.cancelFilePrompt()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.white.opacity(0.65))
+                .help("Cancel")
+            }
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -154,6 +187,8 @@ struct NudgeOverlayView: View {
                 }
 
                 Spacer()
+
+                resultActionsMenu
 
                 Button {
                     model.copyResponseToPasteboard()
@@ -213,6 +248,36 @@ struct NudgeOverlayView: View {
         .opacity(model.isLoading ? 0.62 : 1)
     }
 
+    private var resultActionsMenu: some View {
+        Menu {
+            Button("텍스트 파일로 저장") {
+                model.saveResponseAsTextFile()
+            }
+
+            Button("공유") {
+                model.shareResponse()
+            }
+
+            Button("원본 파일 열기") {
+                model.openDroppedFile()
+            }
+            .disabled(!model.canOpenDroppedFile)
+
+            Divider()
+
+            Button("다시 생성") {
+                model.regenerateLastResponse()
+            }
+            .disabled(model.isLoading)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.white.opacity(0.7))
+        .help("More")
+    }
+
     private var inputBackground: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(Color.white.opacity(0.12))
@@ -243,7 +308,11 @@ struct NudgeOverlayView: View {
                 .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
                 .disabled(isDisabled)
                 .onSubmit {
-                    model.submitPrompt()
+                    if state == .filePrompt {
+                        model.submitFilePrompt()
+                    } else {
+                        model.submitPrompt()
+                    }
                 }
         }
         .padding(.horizontal, 18)

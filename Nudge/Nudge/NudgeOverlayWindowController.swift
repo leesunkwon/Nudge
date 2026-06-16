@@ -46,9 +46,14 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titlebarAppearsTransparent = true
 
         let containerView = NudgeDragDestinationView(frame: initialFrame)
-        containerView.onDragEntered = { [weak self] in
+        containerView.onDragEntered = { [weak self] url in
             Task { @MainActor [weak self] in
-                self?.overlayModel.beginDragging()
+                self?.overlayModel.beginDragging(url: url)
+            }
+        }
+        containerView.onDragUpdated = { [weak self] url in
+            Task { @MainActor [weak self] in
+                self?.overlayModel.beginDragging(url: url)
             }
         }
         containerView.onDragExited = { [weak self] in
@@ -109,9 +114,9 @@ final class NudgeOverlayWindowController: NSObject {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = overlayState == .hovered || overlayState == .dragging ? 0.46 : frameAnimationDuration
+                context.duration = overlayState == .hovered || overlayState == .dragging || overlayState == .filePrompt ? 0.46 : frameAnimationDuration
                 context.allowsImplicitAnimation = true
-                context.timingFunction = overlayState == .hovered || overlayState == .dragging ? .nudgeExpand : .nudgeCollapse
+                context.timingFunction = overlayState == .hovered || overlayState == .dragging || overlayState == .filePrompt ? .nudgeExpand : .nudgeCollapse
                 panel.animator().setFrame(frame, display: true)
             }
         } else {
@@ -158,7 +163,7 @@ final class NudgeOverlayWindowController: NSObject {
             guard activationFrame.contains(mouseLocation) else { return }
             pendingCollapseWorkItem?.cancel()
             transition(to: .hovered)
-        case .dragging:
+        case .dragging, .filePrompt:
             pendingCollapseWorkItem?.cancel()
         case .hovered:
             if retentionFrame.contains(mouseLocation) {
@@ -331,7 +336,8 @@ private extension Animation {
 }
 
 private final class NudgeDragDestinationView: NSView {
-    var onDragEntered: (() -> Void)?
+    var onDragEntered: ((URL) -> Void)?
+    var onDragUpdated: ((URL) -> Void)?
     var onDragExited: (() -> Void)?
     var onFileDropped: ((URL) -> Void)?
 
@@ -346,16 +352,21 @@ private final class NudgeDragDestinationView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard firstFileURL(from: sender.draggingPasteboard) != nil else {
+        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
             return []
         }
 
-        onDragEntered?()
+        onDragEntered?(fileURL)
         return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        firstFileURL(from: sender.draggingPasteboard) == nil ? [] : .copy
+        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
+            return []
+        }
+
+        onDragUpdated?(fileURL)
+        return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
