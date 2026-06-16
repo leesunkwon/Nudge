@@ -22,7 +22,7 @@ enum NudgeOverlayState {
         case .dragging:
             CGSize(width: 540, height: 144)
         case .filePrompt:
-            CGSize(width: 540, height: 144)
+            CGSize(width: 560, height: 196)
         case .hovered:
             CGSize(width: 540, height: 144)
         case .loading:
