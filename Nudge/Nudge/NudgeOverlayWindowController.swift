@@ -40,9 +40,12 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let hostingView = NSHostingView(rootView: NudgeOverlayView(model: overlayModel))
+        let rootView = NudgeOverlayView(model: overlayModel)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: overlayState.size)
         hostingView.autoresizingMask = [.width, .height]
+        hostingView.sizingOptions = []
         panel.contentView = hostingView
 
         return panel
