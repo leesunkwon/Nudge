@@ -18,7 +18,7 @@ struct GeminiClient {
         var errorDescription: String? {
             switch self {
             case .missingAPIKey:
-                "Gemini API 키가 설정되지 않았습니다. GEMINI_API_KEY 환경변수를 설정해 주세요."
+                "Gemini API 키가 설정되지 않았습니다. GEMINI_API_KEY 환경변수 또는 GeminiAPIKey.local 파일을 설정해 주세요."
             case .invalidURL:
                 "Gemini 요청 URL을 만들 수 없습니다."
             case .invalidResponse:
@@ -39,9 +39,7 @@ struct GeminiClient {
     }
 
     func generateText(prompt: String) async throws -> String {
-        guard let apiKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !apiKey.isEmpty else {
-            throw GeminiError.missingAPIKey
-        }
+        let apiKey = try resolveAPIKey()
 
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
             throw GeminiError.invalidURL
@@ -74,6 +72,29 @@ struct GeminiClient {
         }
 
         return text
+    }
+
+    private func resolveAPIKey() throws -> String {
+        if let environmentKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"],
+           !environmentKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return environmentKey
+        }
+
+        if let fileKey = readBundledAPIKey(),
+           !fileKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return fileKey
+        }
+
+        throw GeminiError.missingAPIKey
+    }
+
+    private func readBundledAPIKey() -> String? {
+        guard let url = Bundle.main.url(forResource: "GeminiAPIKey", withExtension: "local") else {
+            return nil
+        }
+
+        return try? String(contentsOf: url, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
