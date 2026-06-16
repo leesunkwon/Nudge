@@ -40,13 +40,17 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
+        let containerView = NSView(frame: NSRect(origin: .zero, size: overlayState.size))
+        containerView.autoresizesSubviews = true
+
         let rootView = NudgeOverlayView(model: overlayModel)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        let hostingView = NSHostingView(rootView: rootView)
-        hostingView.frame = NSRect(origin: .zero, size: overlayState.size)
+        let hostingView = FixedSizeHostingView(rootView: rootView)
+        hostingView.frame = containerView.bounds
         hostingView.autoresizingMask = [.width, .height]
         hostingView.sizingOptions = []
-        panel.contentView = hostingView
+        containerView.addSubview(hostingView)
+        panel.contentView = containerView
 
         return panel
     }()
@@ -209,6 +213,17 @@ private final class NudgeOverlayPanel: NSPanel {
 
     override var canBecomeMain: Bool {
         false
+    }
+}
+
+private final class FixedSizeHostingView<Content: View>: NSHostingView<Content> {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        invalidateIntrinsicContentSize()
     }
 }
 
