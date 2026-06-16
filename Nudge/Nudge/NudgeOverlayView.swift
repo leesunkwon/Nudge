@@ -54,6 +54,12 @@ struct NudgeOverlayView: View {
                 .frame(height: 32)
                 .allowsHitTesting(false)
 
+            if isShowingLoadingGlow {
+                NudgeTopBreathingGlowStrip()
+                    .frame(height: 32)
+                    .allowsHitTesting(false)
+            }
+
             switch state {
             case .dragging:
                 draggingView
@@ -496,6 +502,34 @@ private struct NudgeBreathingGlowCapsule: View {
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
                 .animation(nil, value: breath)
+        }
+    }
+}
+
+private struct NudgeTopBreathingGlowStrip: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.45) + 1) / 2
+            let drift = (sin(phase * 0.72) + 1) / 2
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.25, green: 0.74, blue: 1.0).opacity(0.16 + breath * 0.10),
+                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.18 + breath * 0.13),
+                            Color(red: 1.0, green: 0.40, blue: 0.80).opacity(0.14 + breath * 0.10),
+                            Color(red: 1.0, green: 0.65, blue: 0.34).opacity(0.12 + breath * 0.08)
+                        ],
+                        startPoint: UnitPoint(x: -0.16 + drift * 0.30, y: 0.5),
+                        endPoint: UnitPoint(x: 0.88 + drift * 0.28, y: 0.5)
+                    )
+                )
+                .blur(radius: 18 + breath * 5)
+                .opacity(0.82)
+                .blendMode(.screen)
+                .clipped()
         }
     }
 }
