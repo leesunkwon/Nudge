@@ -9,7 +9,6 @@ import SwiftUI
 
 struct NudgeOverlayView: View {
     @ObservedObject var model: NudgeOverlayModel
-    @State private var prompt = ""
     @State private var isInputVisible = false
 
     private var state: NudgeOverlayState {
@@ -25,24 +24,15 @@ struct NudgeOverlayView: View {
                         .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 }
 
-            if state == .hovered {
-                VStack(spacing: 0) {
-                    Spacer()
-                        .frame(height: 46)
-
-                    TextField("Ask Gemini anything...", text: $prompt)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
-                        .padding(.horizontal, 16)
-                        .frame(height: 38)
-                        .background(inputBackground)
-                        .onSubmit {}
-                }
-                .padding(.horizontal, 18)
-                .opacity(isInputVisible ? 1 : 0)
-                .transition(.opacity)
+            switch state {
+            case .hovered:
+                promptInputView
+            case .loading:
+                loadingView
+            case .result:
+                resultView
+            case .normal:
+                EmptyView()
             }
         }
         .animation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08), value: state)
@@ -53,7 +43,7 @@ struct NudgeOverlayView: View {
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
         switch state {
-        case .normal:
+        case .normal, .loading, .result:
             isInputVisible = false
         case .hovered:
             isInputVisible = false
@@ -64,6 +54,111 @@ struct NudgeOverlayView: View {
                 }
             }
         }
+    }
+
+    private var promptInputView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 46)
+
+            TextField("Ask Gemini anything...", text: $model.prompt)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
+                .padding(.horizontal, 16)
+                .frame(height: 38)
+                .background(inputBackground)
+                .onSubmit {
+                    model.submitPrompt()
+                }
+        }
+        .padding(.horizontal, 18)
+        .opacity(isInputVisible ? 1 : 0)
+        .transition(.opacity)
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 46)
+
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.white.opacity(0.9))
+
+                Text("Thinking")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.8))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(inputBackground)
+        }
+        .padding(.horizontal, 18)
+        .transition(.opacity)
+    }
+
+    private var resultView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Gemini")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.9))
+
+                    Text(model.submittedPrompt)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .foregroundStyle(Color.white.opacity(0.48))
+                }
+
+                Spacer()
+
+                Button {
+                    model.copyResponseToPasteboard()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.white.opacity(0.7))
+                .help("Copy")
+
+                Button {
+                    model.closeResult()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.white.opacity(0.7))
+                .help("Close")
+            }
+
+            ScrollView {
+                Text(resultMessage)
+                    .font(.system(size: 14, weight: .regular))
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .foregroundStyle(resultTextColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+        .padding(.bottom, 20)
+        .transition(.opacity)
+    }
+
+    private var resultMessage: String {
+        model.errorMessage ?? model.responseText
+    }
+
+    private var resultTextColor: Color {
+        model.errorMessage == nil ? Color.white.opacity(0.88) : Color(red: 1.0, green: 0.56, blue: 0.56)
     }
 
     private var inputBackground: some View {

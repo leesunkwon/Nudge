@@ -1,3 +1,10 @@
 # Xcode user state
 *.xcuserstate
 xcuserdata/
+
+# macOS metadata
+.DS_Store
+
+# Local secrets
+Secrets.xcconfig
+*.local.xcconfig
