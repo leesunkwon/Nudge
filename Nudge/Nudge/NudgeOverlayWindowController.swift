@@ -11,10 +11,10 @@ import SwiftUI
 
 @MainActor
 final class NudgeOverlayWindowController: NSObject {
+    private let topEdgeBleed: CGFloat = 14
     private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
     private let hoverCollapseDelay: TimeInterval = 0.45
-    private let hoverContentRevealDelay: TimeInterval = 0.08
     private let hoverStateCheckInterval: TimeInterval = 0.12
     private let frameAnimationDuration: TimeInterval = 0.36
     private var pendingCollapseWorkItem: DispatchWorkItem?
@@ -26,8 +26,9 @@ final class NudgeOverlayWindowController: NSObject {
     private let overlayModel = NudgeOverlayModel()
 
     private lazy var panel: NSPanel = {
+        let initialFrame = windowFrame(for: overlayState.size)
         let panel = NudgeOverlayPanel(
-            contentRect: NSRect(origin: .zero, size: overlayState.size),
+            contentRect: NSRect(origin: .zero, size: initialFrame.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -44,7 +45,7 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        let containerView = NudgeDragDestinationView(frame: NSRect(origin: .zero, size: overlayState.size))
+        let containerView = NudgeDragDestinationView(frame: initialFrame)
         containerView.onDragEntered = { [weak self] in
             Task { @MainActor [weak self] in
                 self?.overlayModel.beginDragging()
@@ -196,18 +197,13 @@ final class NudgeOverlayWindowController: NSObject {
         if nextState == .hovered {
             panel.makeKey()
             startHoverStateCheckTimer()
-            positionPanel(animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + hoverContentRevealDelay) { [weak self] in
-                Task { @MainActor [weak self] in
-                    guard let self, overlayState == .hovered else { return }
-                    withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
-                        self.overlayModel.state = .hovered
-                    }
-                }
+            withAnimation(.nudgeSurfaceResize) {
+                overlayModel.state = .hovered
             }
+            positionPanel(animated: true)
         } else {
             stopHoverStateCheckTimer()
-            withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.08)) {
+            withAnimation(.nudgeSurfaceResize) {
                 overlayModel.state = nextState
             }
             panel.resignKey()
@@ -277,13 +273,22 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func targetFrame(for state: NudgeOverlayState, on screen: NSScreen) -> NSRect {
-        let size = state.size
+        let windowSize = windowFrame(for: state.size).size
 
         return NSRect(
-            x: screen.frame.midX - size.width / 2,
-            y: screen.frame.maxY - size.height,
-            width: size.width,
-            height: size.height
+            x: screen.frame.midX - windowSize.width / 2,
+            y: screen.frame.maxY - state.size.height,
+            width: windowSize.width,
+            height: windowSize.height
+        )
+    }
+
+    private func windowFrame(for stateSize: CGSize) -> NSRect {
+        NSRect(
+            x: 0,
+            y: 0,
+            width: stateSize.width,
+            height: stateSize.height + topEdgeBleed
         )
     }
 }
@@ -316,6 +321,12 @@ private extension CAMediaTimingFunction {
 
     static var nudgeCollapse: CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.33, 0.0, 0.2, 1.0)
+    }
+}
+
+private extension Animation {
+    static var nudgeSurfaceResize: Animation {
+        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.34)
     }
 }
 
