@@ -8,4 +8,3 @@ xcuserdata/
 # Local secrets
 Secrets.xcconfig
 *.local.xcconfig
-GeminiAPIKey.local

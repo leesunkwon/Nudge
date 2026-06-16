@@ -18,7 +18,7 @@ struct GeminiClient {
         var errorDescription: String? {
             switch self {
             case .missingAPIKey:
-                "Gemini API 키가 설정되지 않았습니다. GEMINI_API_KEY 환경변수 또는 GeminiAPIKey.local 파일을 설정해 주세요."
+                "Gemini API 키가 설정되지 않았습니다. Secrets.xcconfig의 GEMINI_API_KEY 값을 확인해 주세요."
             case .invalidURL:
                 "Gemini 요청 URL을 만들 수 없습니다."
             case .invalidResponse:
@@ -80,21 +80,12 @@ struct GeminiClient {
             return environmentKey
         }
 
-        if let fileKey = readBundledAPIKey(),
-           !fileKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return fileKey
+        if let infoPlistKey = Bundle.main.object(forInfoDictionaryKey: "GeminiAPIKey") as? String,
+           !infoPlistKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return infoPlistKey
         }
 
         throw GeminiError.missingAPIKey
-    }
-
-    private func readBundledAPIKey() -> String? {
-        guard let url = Bundle.main.url(forResource: "GeminiAPIKey", withExtension: "local") else {
-            return nil
-        }
-
-        return try? String(contentsOf: url, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
