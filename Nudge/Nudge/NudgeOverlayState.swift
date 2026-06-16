@@ -17,7 +17,7 @@ enum NudgeOverlayState {
     var size: CGSize {
         switch self {
         case .normal:
-            CGSize(width: 300, height: 44)
+            CGSize(width: 260, height: 38)
         case .dragging:
             CGSize(width: 540, height: 144)
         case .hovered:
