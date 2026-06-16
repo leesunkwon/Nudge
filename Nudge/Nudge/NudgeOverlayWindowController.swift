@@ -11,6 +11,10 @@ import SwiftUI
 @MainActor
 final class NudgeOverlayWindowController: NSObject {
     private let hoverActivationPadding: CGFloat = 18
+    private let hoverRetentionPadding = NSSize(width: 42, height: 54)
+    private let hoverCollapseDelay: TimeInterval = 0.45
+    private let frameAnimationDuration: TimeInterval = 0.36
+    private var pendingCollapseWorkItem: DispatchWorkItem?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var overlayState: NudgeOverlayState = .normal
@@ -73,8 +77,9 @@ final class NudgeOverlayWindowController: NSObject {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.28
+                context.duration = frameAnimationDuration
                 context.allowsImplicitAnimation = true
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 panel.animator().setFrame(frame, display: true)
             }
         } else {
@@ -116,7 +121,38 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func updateHoverState(for mouseLocation: NSPoint) {
-        let nextState: NudgeOverlayState = hoverFrame.contains(mouseLocation) ? .hovered : .normal
+        switch overlayState {
+        case .normal:
+            guard activationFrame.contains(mouseLocation) else { return }
+            pendingCollapseWorkItem?.cancel()
+            transition(to: .hovered)
+        case .hovered:
+            if retentionFrame.contains(mouseLocation) {
+                pendingCollapseWorkItem?.cancel()
+            } else {
+                scheduleHoverCollapse()
+            }
+        }
+    }
+
+    private func scheduleHoverCollapse() {
+        guard pendingCollapseWorkItem == nil else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                pendingCollapseWorkItem = nil
+                if !retentionFrame.contains(NSEvent.mouseLocation) {
+                    transition(to: .normal)
+                }
+            }
+        }
+
+        pendingCollapseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + hoverCollapseDelay, execute: workItem)
+    }
+
+    private func transition(to nextState: NudgeOverlayState) {
         guard nextState != overlayState else { return }
 
         overlayState = nextState
@@ -134,13 +170,12 @@ final class NudgeOverlayWindowController: NSObject {
         positionPanel(animated: true)
     }
 
-    private var hoverFrame: NSRect {
-        switch overlayState {
-        case .normal:
-            panel.frame.insetBy(dx: -hoverActivationPadding, dy: -hoverActivationPadding)
-        case .hovered:
-            panel.frame
-        }
+    private var activationFrame: NSRect {
+        panel.frame.insetBy(dx: -hoverActivationPadding, dy: -hoverActivationPadding)
+    }
+
+    private var retentionFrame: NSRect {
+        panel.frame.insetBy(dx: -hoverRetentionPadding.width, dy: -hoverRetentionPadding.height)
     }
 
     private func targetFrame(for state: NudgeOverlayState, on screen: NSScreen) -> NSRect {
