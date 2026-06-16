@@ -62,7 +62,7 @@ struct NudgeOverlayView: View {
                 .frame(height: 46)
 
             gradientPromptField(
-                placeholder: "Ask Gemini anything...",
+                placeholder: "무엇이든 물어보세요...",
                 fontSize: 15,
                 isDisabled: false
             )
@@ -170,7 +170,7 @@ struct NudgeOverlayView: View {
 
     private var followUpInputView: some View {
         gradientPromptField(
-            placeholder: model.isLoading ? "Waiting for Gemini..." : "Ask a follow-up...",
+            placeholder: model.isLoading ? "Gemini가 생각하는 중..." : "이어서 물어보세요...",
             fontSize: 14,
             isDisabled: model.isLoading
         )
