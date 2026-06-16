@@ -41,9 +41,9 @@ struct NudgeOverlayView: View {
                         if isShowingLoadingGlow {
                             NudgeBreathingGlowView(
                                 shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 26 : 28),
-                                intensity: state == .loading ? 0.34 : 0.24
+                                intensity: state == .loading ? 0.34 : 0.38
                             )
-                            .padding(state == .loading ? 3 : 6)
+                            .padding(state == .loading ? 3 : 0)
                             .allowsHitTesting(false)
                         }
                     }
@@ -195,8 +195,8 @@ struct NudgeOverlayView: View {
     }
 
     private var resultLoadingView: some View {
-        NudgeBreathingGlowPanel()
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+        Color.clear
+            .frame(maxWidth: .infinity, minHeight: 150)
     }
 
     private var followUpInputView: some View {
@@ -384,43 +384,6 @@ private struct NudgeBreathingGlowCapsule: View {
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
                 .animation(nil, value: breath)
-        }
-    }
-}
-
-private struct NudgeBreathingGlowPanel: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            let phase = context.date.timeIntervalSinceReferenceDate
-            let breath = (sin(phase * 1.30) + 1) / 2
-            let drift = (sin(phase * 0.64) + 1) / 2
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.035 + breath * 0.025))
-
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.20, green: 0.73, blue: 1.0).opacity(0.16),
-                                Color(red: 0.56, green: 0.44, blue: 1.0).opacity(0.26 + breath * 0.12),
-                                Color(red: 1.0, green: 0.42, blue: 0.82).opacity(0.22 + breath * 0.12),
-                                Color(red: 1.0, green: 0.66, blue: 0.36).opacity(0.16)
-                            ],
-                            startPoint: UnitPoint(x: -0.24 + drift * 0.38, y: 0.0),
-                            endPoint: UnitPoint(x: 0.90 + drift * 0.30, y: 1.0)
-                        )
-                    )
-                    .blur(radius: 24 + breath * 8)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .blendMode(.screen)
-
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.06 + breath * 0.08), lineWidth: 1)
-            }
-            .scaleEffect(0.992 + breath * 0.008)
         }
     }
 }
