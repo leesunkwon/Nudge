@@ -18,7 +18,7 @@ struct GeminiClient {
         var errorDescription: String? {
             switch self {
             case .missingAPIKey:
-                "Gemini API 키가 설정되지 않았습니다. Secrets.xcconfig의 GEMINI_API_KEY 값을 확인해 주세요."
+                "설정에서 Gemini API Key를 입력해 주세요."
             case .invalidURL:
                 "Gemini 요청 URL을 만들 수 없습니다."
             case .invalidResponse:
@@ -31,10 +31,11 @@ struct GeminiClient {
         }
     }
 
-    private let model = "gemini-3.1-flash-lite"
+    private let settingsStore: NudgeSettingsStore
     private let session: URLSession
 
-    nonisolated init(session: URLSession = .shared) {
+    init(settingsStore: NudgeSettingsStore, session: URLSession = .shared) {
+        self.settingsStore = settingsStore
         self.session = session
     }
 
@@ -61,6 +62,7 @@ struct GeminiClient {
     private func generateContent(contents: [GeminiContent]) async throws -> String {
         let apiKey = try resolveAPIKey()
 
+        let model = settingsStore.selectedModel.rawValue
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
             throw GeminiError.invalidURL
         }
@@ -91,6 +93,11 @@ struct GeminiClient {
     }
 
     private func resolveAPIKey() throws -> String {
+        if let keychainKey = settingsStore.loadAPIKey(),
+           !keychainKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return keychainKey
+        }
+
         if let environmentKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"],
            !environmentKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return environmentKey

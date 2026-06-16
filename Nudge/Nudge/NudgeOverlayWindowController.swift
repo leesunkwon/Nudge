@@ -12,18 +12,17 @@ import SwiftUI
 @MainActor
 final class NudgeOverlayWindowController: NSObject {
     private let topEdgeBleed: CGFloat = 14
-    private let hoverActivationPadding: CGFloat = 18
     private let hoverRetentionPadding = NSSize(width: 42, height: 54)
-    private let hoverCollapseDelay: TimeInterval = 0.45
     private let hoverStateCheckInterval: TimeInterval = 0.12
-    private let frameAnimationDuration: TimeInterval = 0.36
     private var pendingCollapseWorkItem: DispatchWorkItem?
     private var hoverStateCheckTimer: Timer?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var overlayState: NudgeOverlayState = .normal
-    private let overlayModel = NudgeOverlayModel()
+    private let settingsStore: NudgeSettingsStore
+    private let onOpenSettings: () -> Void
+    private let overlayModel: NudgeOverlayModel
 
     private lazy var panel: NSPanel = {
         let initialFrame = windowFrame(for: overlayState.size)
@@ -68,7 +67,7 @@ final class NudgeOverlayWindowController: NSObject {
         }
         containerView.autoresizesSubviews = true
 
-        let rootView = NudgeOverlayView(model: overlayModel)
+        let rootView = NudgeOverlayView(model: overlayModel, settingsStore: settingsStore)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         let hostingView = FixedSizeHostingView(rootView: rootView)
         hostingView.frame = containerView.bounds
@@ -80,10 +79,19 @@ final class NudgeOverlayWindowController: NSObject {
         return panel
     }()
 
-    override init() {
+    init(settingsStore: NudgeSettingsStore, onOpenSettings: @escaping () -> Void) {
+        self.settingsStore = settingsStore
+        self.onOpenSettings = onOpenSettings
+        self.overlayModel = NudgeOverlayModel(
+            settingsStore: settingsStore,
+            geminiClient: GeminiClient(settingsStore: settingsStore)
+        )
+
         super.init()
 
+        overlayModel.onOpenSettings = onOpenSettings
         observeOverlayStateChanges()
+        observeSettingsChanges()
 
         NotificationCenter.default.addObserver(
             self,
@@ -114,7 +122,9 @@ final class NudgeOverlayWindowController: NSObject {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = overlayState == .hovered || overlayState == .dragging || overlayState == .filePrompt ? 0.46 : frameAnimationDuration
+                context.duration = overlayState == .hovered || overlayState == .dragging || overlayState == .filePrompt
+                    ? settingsStore.animationSpeed.expandDuration
+                    : settingsStore.animationSpeed.frameDuration
                 context.allowsImplicitAnimation = true
                 context.timingFunction = overlayState == .hovered || overlayState == .dragging || overlayState == .filePrompt ? .nudgeExpand : .nudgeCollapse
                 panel.animator().setFrame(frame, display: true)
@@ -166,6 +176,12 @@ final class NudgeOverlayWindowController: NSObject {
         case .dragging, .filePrompt:
             pendingCollapseWorkItem?.cancel()
         case .hovered:
+            if settingsStore.keepsHoverOpenWhileTyping && !overlayModel.prompt.isEmpty {
+                pendingCollapseWorkItem?.cancel()
+                pendingCollapseWorkItem = nil
+                return
+            }
+
             if retentionFrame.contains(mouseLocation) {
                 pendingCollapseWorkItem?.cancel()
                 pendingCollapseWorkItem = nil
@@ -184,6 +200,10 @@ final class NudgeOverlayWindowController: NSObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 pendingCollapseWorkItem = nil
+                if settingsStore.keepsHoverOpenWhileTyping && !overlayModel.prompt.isEmpty {
+                    return
+                }
+
                 if !retentionFrame.contains(NSEvent.mouseLocation) {
                     transition(to: .normal)
                 }
@@ -191,7 +211,7 @@ final class NudgeOverlayWindowController: NSObject {
         }
 
         pendingCollapseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + hoverCollapseDelay, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + settingsStore.hoverCollapseDelay, execute: workItem)
     }
 
     private func transition(to nextState: NudgeOverlayState) {
@@ -202,13 +222,13 @@ final class NudgeOverlayWindowController: NSObject {
         if nextState == .hovered {
             panel.makeKey()
             startHoverStateCheckTimer()
-            withAnimation(.nudgeSurfaceResize) {
+            withAnimation(settingsStore.animationSpeed.swiftUIAnimation) {
                 overlayModel.state = .hovered
             }
             positionPanel(animated: true)
         } else {
             stopHoverStateCheckTimer()
-            withAnimation(.nudgeSurfaceResize) {
+            withAnimation(settingsStore.animationSpeed.swiftUIAnimation) {
                 overlayModel.state = nextState
             }
             panel.resignKey()
@@ -221,6 +241,19 @@ final class NudgeOverlayWindowController: NSObject {
             .sink { [weak self] nextState in
                 Task { @MainActor [weak self] in
                     self?.syncPanel(to: nextState)
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func observeSettingsChanges() {
+        settingsStore.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if overlayState != .normal {
+                        positionPanel(animated: false)
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -270,7 +303,7 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private var activationFrame: NSRect {
-        panel.frame.insetBy(dx: -hoverActivationPadding, dy: -hoverActivationPadding)
+        panel.frame.insetBy(dx: -settingsStore.hoverActivationPadding, dy: -settingsStore.hoverActivationPadding)
     }
 
     private var retentionFrame: NSRect {

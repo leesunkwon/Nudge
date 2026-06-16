@@ -9,6 +9,7 @@ import SwiftUI
 
 struct NudgeOverlayView: View {
     @ObservedObject var model: NudgeOverlayModel
+    @ObservedObject var settingsStore: NudgeSettingsStore
     @State private var isInputVisible = false
 
     private var state: NudgeOverlayState {
@@ -41,7 +42,7 @@ struct NudgeOverlayView: View {
                         if isShowingLoadingGlow {
                             NudgeBreathingGlowView(
                                 shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 30 : 32),
-                                intensity: state == .loading ? 0.34 : 0.38
+                                intensity: (state == .loading ? 0.34 : 0.38) * settingsStore.glowIntensity.multiplier
                             )
                             .padding(state == .loading ? 3 : 0)
                             .allowsHitTesting(false)
@@ -57,6 +58,7 @@ struct NudgeOverlayView: View {
             if isShowingLoadingGlow {
                 NudgeTopBreathingGlowStrip()
                     .frame(height: 32)
+                    .opacity(settingsStore.glowIntensity.multiplier)
                     .allowsHitTesting(false)
             }
 
@@ -75,7 +77,7 @@ struct NudgeOverlayView: View {
                 EmptyView()
             }
         }
-        .animation(.nudgeSurfaceResize, value: state)
+        .animation(settingsStore.animationSpeed.swiftUIAnimation, value: state)
         .onChange(of: state) { _, newState in
             updateInputVisibility(for: newState)
         }
@@ -183,7 +185,7 @@ struct NudgeOverlayView: View {
             Spacer()
                 .frame(height: 64)
 
-            NudgeBreathingGlowCapsule()
+            NudgeBreathingGlowCapsule(intensity: settingsStore.glowIntensity.multiplier)
             .frame(height: 46)
         }
         .padding(.horizontal, 30)
@@ -277,6 +279,10 @@ struct NudgeOverlayView: View {
             .disabled(!model.canOpenDroppedFile)
 
             Divider()
+
+            Button("설정") {
+                model.openSettings()
+            }
 
             Button("다시 생성") {
                 model.regenerateLastResponse()
@@ -372,12 +378,6 @@ struct NudgeOverlayView: View {
     }
 }
 
-private extension Animation {
-    static var nudgeSurfaceResize: Animation {
-        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.34)
-    }
-}
-
 private struct NudgeUnifiedSurfaceShape: InsettableShape {
     var cornerRadius: CGFloat
     var insetAmount: CGFloat = 0
@@ -470,6 +470,8 @@ private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
 }
 
 private struct NudgeBreathingGlowCapsule: View {
+    let intensity: Double
+
     var body: some View {
         TimelineView(.animation) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
@@ -501,6 +503,7 @@ private struct NudgeBreathingGlowCapsule: View {
                         .strokeBorder(Color.white.opacity(0.12 + breath * 0.10), lineWidth: 1)
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
+                .opacity(intensity)
                 .animation(nil, value: breath)
         }
     }

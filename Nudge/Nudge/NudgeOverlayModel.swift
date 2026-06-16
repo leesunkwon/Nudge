@@ -25,13 +25,19 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var canOpenDroppedFile = false
 
     private let geminiClient: GeminiClient
+    private let settingsStore: NudgeSettingsStore
     private var conversationHistory: [GeminiConversationContent] = []
     private var pendingDroppedFile: DroppedFileContext?
     private var resultDroppedFileURL: URL?
     private var lastRequest: LastRequest?
     private var typingTask: Task<Void, Never>?
+    var onOpenSettings: (() -> Void)?
 
-    init(geminiClient: GeminiClient = GeminiClient()) {
+    init(
+        settingsStore: NudgeSettingsStore,
+        geminiClient: GeminiClient
+    ) {
+        self.settingsStore = settingsStore
         self.geminiClient = geminiClient
     }
 
@@ -50,11 +56,9 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 let baseHistory = conversationHistory
-                let requestContents = baseHistory + [
-                    GeminiConversationContent.userText(trimmedPrompt)
-                ]
-                let response = try await geminiClient.generateText(contents: requestContents)
                 let userContent = GeminiConversationContent.userText(trimmedPrompt)
+                let contents = buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                let response = try await geminiClient.generateText(contents: contents)
                 conversationHistory.append(userContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
                 lastRequest = .text(prompt: trimmedPrompt, baseHistory: baseHistory)
@@ -114,7 +118,10 @@ final class NudgeOverlayModel: ObservableObject {
         guard !isLoading, let droppedFile = pendingDroppedFile else { return }
 
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalPrompt = trimmedPrompt.isEmpty ? droppedFile.payloadKind.analysisPrompt : trimmedPrompt
+        let finalPrompt = droppedFile.payloadKind.requestPrompt(
+            settingsStore: settingsStore,
+            userQuestion: trimmedPrompt.isEmpty ? settingsStore.emptyFileQuestionPrompt : trimmedPrompt
+        )
         submittedPrompt = "\(droppedFile.displayName) - \(finalPrompt)"
         prompt = ""
         resetResponseOutput()
@@ -132,7 +139,9 @@ final class NudgeOverlayModel: ObservableObject {
                     mimeType: fileRequest.mimeType
                 )
                 let baseHistory = conversationHistory
-                let response = try await geminiClient.generateText(contents: baseHistory + [fileContent])
+                let response = try await geminiClient.generateText(
+                    contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
+                )
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
                 lastRequest = .file(context: droppedFile, prompt: finalPrompt, baseHistory: baseHistory)
@@ -226,7 +235,9 @@ final class NudgeOverlayModel: ObservableObject {
                 case let .text(prompt, baseHistory):
                     submittedPrompt = prompt
                     let userContent = GeminiConversationContent.userText(prompt)
-                    let response = try await geminiClient.generateText(contents: baseHistory + [userContent])
+                    let response = try await geminiClient.generateText(
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                    )
                     conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
                     responseText = response
                 case let .file(context, prompt, baseHistory):
@@ -237,7 +248,9 @@ final class NudgeOverlayModel: ObservableObject {
                         data: fileRequest.data,
                         mimeType: fileRequest.mimeType
                     )
-                    let response = try await geminiClient.generateText(contents: baseHistory + [fileContent])
+                    let response = try await geminiClient.generateText(
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
+                    )
                     conversationHistory = baseHistory + [fileContent, GeminiConversationContent.modelText(response)]
                     resultDroppedFileURL = context.url
                     canOpenDroppedFile = true
@@ -259,10 +272,28 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
+    func openSettings() {
+        onOpenSettings?()
+    }
+
     private func resetResponseOutput() {
         cancelTypingResponse()
         responseText = ""
         displayedResponseText = ""
+    }
+
+    private func buildRequestContents(
+        baseHistory: [GeminiConversationContent],
+        userContent: GeminiConversationContent
+    ) -> [GeminiConversationContent] {
+        let systemPrompt = settingsStore.textSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !systemPrompt.isEmpty else {
+            return baseHistory + [userContent]
+        }
+
+        return [
+            GeminiConversationContent.userText("시스템 지침:\n\(systemPrompt)")
+        ] + baseHistory + [userContent]
     }
 
     private func cancelTypingResponse() {
@@ -429,12 +460,21 @@ private enum DropFilePayloadKind {
         }
     }
 
-    var analysisPrompt: String {
+    func requestPrompt(settingsStore: NudgeSettingsStore, userQuestion: String) -> String {
+        let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackQuestion = question.isEmpty ? NudgeSettingsStore.Defaults.emptyFileQuestionPrompt : question
+
         switch self {
         case .image:
-            "이 이미지를 한국어로 자세히 분석해 주세요. 핵심 내용, 눈에 띄는 요소, 필요한 후속 작업을 간결하게 정리해 주세요."
+            return [settingsStore.imageAnalysisPrompt, "사용자 요청: \(fallbackQuestion)"]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
         case .pdf:
-            "이 PDF 문서를 한국어로 자세히 분석해 주세요. 핵심 요약, 주요 주장이나 내용, 표와 차트에서 읽을 수 있는 정보, 필요한 후속 작업을 간결하게 정리해 주세요."
+            return [settingsStore.pdfAnalysisPrompt, "사용자 요청: \(fallbackQuestion)"]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
         }
     }
 
