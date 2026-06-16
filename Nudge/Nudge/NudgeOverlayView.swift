@@ -96,7 +96,7 @@ struct NudgeOverlayView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(appleIntelligenceGradient)
 
-                Text("이미지를 놓아주세요")
+                Text("파일을 놓아주세요")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.86))
             }

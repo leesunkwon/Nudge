@@ -48,7 +48,7 @@ struct GeminiClient {
         try await generateContent(contents: contents.map(GeminiContent.init))
     }
 
-    func analyzeImage(data: Data, mimeType: String, prompt: String) async throws -> String {
+    func analyzeFile(data: Data, mimeType: String, prompt: String) async throws -> String {
         try await generateContent(contents: [
             GeminiContent(
                 role: GeminiConversationContent.Role.user.rawValue,
