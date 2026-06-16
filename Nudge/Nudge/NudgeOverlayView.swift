@@ -75,16 +75,25 @@ struct NudgeOverlayView: View {
     }
 
     private var draggingView: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "photo.badge.arrow.down")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(appleIntelligenceGradient)
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: 46)
 
-            Text("이미지를 놓아주세요")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.86))
+            HStack(spacing: 10) {
+                Image(systemName: "photo.badge.arrow.down")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+
+                Text("이미지를 놓아주세요")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.86))
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .frame(maxWidth: .infinity)
+            .background(inputBackground)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 18)
         .overlay {
             NudgeUnifiedSurfaceShape(cornerRadius: 24)
                 .strokeBorder(
