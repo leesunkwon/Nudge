@@ -138,19 +138,56 @@ struct NudgeOverlayView: View {
             }
 
             ScrollView {
-                Text(resultMessage)
-                    .font(.system(size: 14, weight: .regular))
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .foregroundStyle(resultTextColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if model.isLoading {
+                    resultLoadingView
+                } else {
+                    Text(resultMessage)
+                        .font(.system(size: 14, weight: .regular))
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .foregroundStyle(resultTextColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .scrollIndicators(.hidden)
+
+            followUpInputView
         }
         .padding(.horizontal, 22)
         .padding(.top, 22)
-        .padding(.bottom, 20)
+        .padding(.bottom, 18)
         .transition(.opacity)
+    }
+
+    private var resultLoadingView: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(Color.white.opacity(0.9))
+
+            Text("Thinking")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.78))
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+    }
+
+    private var followUpInputView: some View {
+        TextField(model.isLoading ? "Waiting for Gemini..." : "Ask a follow-up...", text: $model.prompt)
+            .textFieldStyle(.plain)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(Color.white.opacity(0.92))
+            .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(inputBackground)
+            .disabled(model.isLoading)
+            .opacity(model.isLoading ? 0.62 : 1)
+            .onSubmit {
+                model.submitPrompt()
+            }
     }
 
     private var resultMessage: String {
