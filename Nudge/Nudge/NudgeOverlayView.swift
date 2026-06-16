@@ -17,10 +17,10 @@ struct NudgeOverlayView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: state == .normal ? 21 : 34, style: .continuous)
+            NudgeAttachedPanelShape(cornerRadius: state == .normal ? 20 : 42)
                 .fill(Color.black.opacity(0.92))
                 .overlay {
-                    RoundedRectangle(cornerRadius: state == .normal ? 21 : 34, style: .continuous)
+                    NudgeAttachedPanelShape(cornerRadius: state == .normal ? 20 : 42)
                         .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 }
 
@@ -74,5 +74,48 @@ struct NudgeOverlayView: View {
                     .padding(.horizontal, 18)
                     .padding(.bottom, 1)
             }
+    }
+}
+
+private struct NudgeAttachedPanelShape: InsettableShape {
+    var cornerRadius: CGFloat
+    var insetAmount: CGFloat = 0
+
+    var animatableData: CGFloat {
+        get { cornerRadius }
+        set { cornerRadius = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        let radius = min(cornerRadius, insetRect.width / 2, insetRect.height)
+        let minX = insetRect.minX
+        let maxX = insetRect.maxX
+        let minY = insetRect.minY
+        let maxY = insetRect.maxY
+
+        var path = Path()
+        path.move(to: CGPoint(x: minX, y: minY))
+        path.addLine(to: CGPoint(x: maxX, y: minY))
+        path.addLine(to: CGPoint(x: maxX, y: maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: maxX - radius, y: maxY),
+            control: CGPoint(x: maxX, y: maxY)
+        )
+        path.addLine(to: CGPoint(x: minX + radius, y: maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: minX, y: maxY - radius),
+            control: CGPoint(x: minX, y: maxY)
+        )
+        path.addLine(to: CGPoint(x: minX, y: minY))
+        path.closeSubpath()
+
+        return path
+    }
+
+    func inset(by amount: CGFloat) -> some InsettableShape {
+        var shape = self
+        shape.insetAmount += amount
+        return shape
     }
 }
