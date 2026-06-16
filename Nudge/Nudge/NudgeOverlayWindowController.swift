@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -18,6 +19,7 @@ final class NudgeOverlayWindowController: NSObject {
     private var pendingCollapseWorkItem: DispatchWorkItem?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
     private var overlayState: NudgeOverlayState = .normal
     private let overlayModel = NudgeOverlayModel()
 
@@ -57,6 +59,8 @@ final class NudgeOverlayWindowController: NSObject {
 
     override init() {
         super.init()
+
+        observeOverlayStateChanges()
 
         NotificationCenter.default.addObserver(
             self,
@@ -141,6 +145,8 @@ final class NudgeOverlayWindowController: NSObject {
             } else {
                 scheduleHoverCollapse()
             }
+        case .loading, .result:
+            pendingCollapseWorkItem?.cancel()
         }
     }
 
@@ -184,6 +190,32 @@ final class NudgeOverlayWindowController: NSObject {
             panel.resignKey()
             positionPanel(animated: true)
         }
+    }
+
+    private func observeOverlayStateChanges() {
+        overlayModel.$state
+            .sink { [weak self] nextState in
+                Task { @MainActor [weak self] in
+                    self?.syncPanel(to: nextState)
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func syncPanel(to nextState: NudgeOverlayState) {
+        guard nextState != overlayState else { return }
+
+        overlayState = nextState
+        pendingCollapseWorkItem?.cancel()
+        panel.ignoresMouseEvents = nextState == .normal
+
+        if nextState == .normal {
+            panel.resignKey()
+        } else {
+            panel.makeKey()
+        }
+
+        positionPanel(animated: true)
     }
 
     private var activationFrame: NSRect {

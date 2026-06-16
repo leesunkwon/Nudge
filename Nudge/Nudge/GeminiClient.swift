@@ -1,0 +1,106 @@
+//
+//  GeminiClient.swift
+//  Nudge
+//
+//  Created by Codex on 6/16/26.
+//
+
+import Foundation
+
+struct GeminiClient {
+    enum GeminiError: LocalizedError {
+        case missingAPIKey
+        case invalidURL
+        case invalidResponse
+        case apiError(String)
+        case emptyResponse
+
+        var errorDescription: String? {
+            switch self {
+            case .missingAPIKey:
+                "Gemini API 키가 설정되지 않았습니다. GEMINI_API_KEY 환경변수를 설정해 주세요."
+            case .invalidURL:
+                "Gemini 요청 URL을 만들 수 없습니다."
+            case .invalidResponse:
+                "Gemini 응답을 확인할 수 없습니다."
+            case let .apiError(message):
+                message
+            case .emptyResponse:
+                "Gemini 응답이 비어 있습니다."
+            }
+        }
+    }
+
+    private let model = "gemini-3.1-flash-lite"
+    private let session: URLSession
+
+    nonisolated init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func generateText(prompt: String) async throws -> String {
+        guard let apiKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !apiKey.isEmpty else {
+            throw GeminiError.missingAPIKey
+        }
+
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
+            throw GeminiError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(GeminiRequest(contents: [
+            GeminiContent(parts: [
+                GeminiPart(text: prompt)
+            ])
+        ]))
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GeminiError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let errorResponse = try? JSONDecoder().decode(GeminiErrorResponse.self, from: data)
+            throw GeminiError.apiError(errorResponse?.error.message ?? "Gemini 요청에 실패했습니다. 다시 시도해 주세요.")
+        }
+
+        let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
+        guard let text = geminiResponse.candidates.first?.content.parts.first?.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GeminiError.emptyResponse
+        }
+
+        return text
+    }
+}
+
+private struct GeminiRequest: Encodable {
+    let contents: [GeminiContent]
+}
+
+private struct GeminiContent: Codable {
+    let parts: [GeminiPart]
+}
+
+private struct GeminiPart: Codable {
+    let text: String
+}
+
+private struct GeminiResponse: Decodable {
+    let candidates: [GeminiCandidate]
+}
+
+private struct GeminiCandidate: Decodable {
+    let content: GeminiContent
+}
+
+private struct GeminiErrorResponse: Decodable {
+    let error: GeminiAPIError
+}
+
+private struct GeminiAPIError: Decodable {
+    let message: String
+}
