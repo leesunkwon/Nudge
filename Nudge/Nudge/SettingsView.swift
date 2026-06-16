@@ -11,6 +11,7 @@ struct SettingsView: View {
     @ObservedObject var settingsStore: NudgeSettingsStore
     @State private var apiKeyInput = ""
     @State private var apiKeyMessage: String?
+    @State private var resetMessage: String?
 
     var body: some View {
         ScrollView {
@@ -20,6 +21,7 @@ struct SettingsView: View {
                 promptSection
                 interactionSection
                 animationSection
+                resetSection
             }
             .padding(28)
         }
@@ -146,6 +148,29 @@ struct SettingsView: View {
                 Picker("글로우 효과 강도", selection: $settingsStore.glowIntensity) {
                     ForEach(NudgeSettingsStore.GlowIntensity.allCases) { intensity in
                         Text(intensity.title).tag(intensity)
+                    }
+                }
+            }
+        }
+    }
+
+    private var resetSection: some View {
+        settingsSection("Reset") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("모델, 프롬프트, Hover 동작, 애니메이션 설정을 기본값으로 되돌립니다. Gemini API Key는 삭제하지 않습니다.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("설정 초기화") {
+                        settingsStore.resetPreferencesToDefaults()
+                        resetMessage = "기본 설정으로 되돌렸습니다."
+                    }
+
+                    if let resetMessage {
+                        Text(resetMessage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

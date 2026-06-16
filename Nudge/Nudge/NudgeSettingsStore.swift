@@ -157,9 +157,9 @@ final class NudgeSettingsStore: ObservableObject {
         imageAnalysisPrompt = defaults.string(forKey: Keys.imageAnalysisPrompt) ?? Defaults.imageAnalysisPrompt
         pdfAnalysisPrompt = defaults.string(forKey: Keys.pdfAnalysisPrompt) ?? Defaults.pdfAnalysisPrompt
         emptyFileQuestionPrompt = defaults.string(forKey: Keys.emptyFileQuestionPrompt) ?? Defaults.emptyFileQuestionPrompt
-        hoverActivationPadding = defaults.object(forKey: Keys.hoverActivationPadding) as? Double ?? 18
-        hoverCollapseDelay = defaults.object(forKey: Keys.hoverCollapseDelay) as? Double ?? 0.45
-        keepsHoverOpenWhileTyping = defaults.object(forKey: Keys.keepsHoverOpenWhileTyping) as? Bool ?? true
+        hoverActivationPadding = defaults.object(forKey: Keys.hoverActivationPadding) as? Double ?? Defaults.hoverActivationPadding
+        hoverCollapseDelay = defaults.object(forKey: Keys.hoverCollapseDelay) as? Double ?? Defaults.hoverCollapseDelay
+        keepsHoverOpenWhileTyping = defaults.object(forKey: Keys.keepsHoverOpenWhileTyping) as? Bool ?? Defaults.keepsHoverOpenWhileTyping
         animationSpeed = AnimationSpeed(rawValue: defaults.string(forKey: Keys.animationSpeed) ?? "") ?? .smooth
         glowIntensity = GlowIntensity(rawValue: defaults.string(forKey: Keys.glowIntensity) ?? "") ?? .normal
         isAPIKeyConfigured = keychainStore.loadAPIKey() != nil
@@ -190,6 +190,16 @@ final class NudgeSettingsStore: ObservableObject {
         emptyFileQuestionPrompt = Defaults.emptyFileQuestionPrompt
     }
 
+    func resetPreferencesToDefaults() {
+        selectedModel = .flashLite
+        resetPrompts()
+        hoverActivationPadding = Defaults.hoverActivationPadding
+        hoverCollapseDelay = Defaults.hoverCollapseDelay
+        keepsHoverOpenWhileTyping = Defaults.keepsHoverOpenWhileTyping
+        animationSpeed = .smooth
+        glowIntensity = .normal
+    }
+
     private enum Keys {
         static let selectedModel = "selectedModel"
         static let textSystemPrompt = "textSystemPrompt"
@@ -204,6 +214,9 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     enum Defaults {
+        static let hoverActivationPadding = 18.0
+        static let hoverCollapseDelay = 0.45
+        static let keepsHoverOpenWhileTyping = true
         static let textSystemPrompt = "당신은 macOS 유틸리티 Nudge 안에서 동작하는 간결하고 실용적인 AI 어시스턴트입니다. 사용자의 작업 흐름을 끊지 않도록 한국어로 핵심부터 답변해 주세요."
         static let imageAnalysisPrompt = "이 이미지를 한국어로 자세히 분석해 주세요. 핵심 내용, 눈에 띄는 요소, 필요한 후속 작업을 간결하게 정리해 주세요."
         static let pdfAnalysisPrompt = "이 PDF 문서를 한국어로 자세히 분석해 주세요. 핵심 요약, 주요 주장이나 내용, 표와 차트에서 읽을 수 있는 정보, 필요한 후속 작업을 간결하게 정리해 주세요."
