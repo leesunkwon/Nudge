@@ -144,16 +144,28 @@ struct NudgeOverlayView: View {
                     fontSize: 16,
                     isDisabled: false
                 )
+                .frame(maxWidth: .infinity)
 
                 Button {
                     model.cancelFilePrompt()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 32, height: 46)
+                        .background {
+                            Circle()
+                                .fill(Color.white.opacity(0.13))
+                                .overlay {
+                                    Circle()
+                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                                }
+                        }
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.white.opacity(0.65))
+                .foregroundStyle(Color.white.opacity(0.84))
                 .help("Cancel")
+                .fixedSize()
             }
         }
         .padding(.horizontal, 30)
@@ -188,25 +200,20 @@ struct NudgeOverlayView: View {
 
                 Spacer()
 
-                resultActionsMenu
+                HStack(spacing: 8) {
+                    resultActionsMenu
 
-                Button {
-                    model.copyResponseToPasteboard()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.white.opacity(0.7))
-                .help("Copy")
+                    headerIconButton(systemName: "doc.on.doc") {
+                        model.copyResponseToPasteboard()
+                    }
+                    .help("Copy")
 
-                Button {
-                    model.closeResult()
-                } label: {
-                    Image(systemName: "xmark")
+                    headerIconButton(systemName: "xmark") {
+                        model.closeResult()
+                    }
+                    .help("Close")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.white.opacity(0.7))
-                .help("Close")
+                .fixedSize()
             }
 
             ScrollView {
@@ -270,12 +277,37 @@ struct NudgeOverlayView: View {
             }
             .disabled(model.isLoading)
         } label: {
-            Image(systemName: "ellipsis.circle")
+            headerIconLabel(systemName: "ellipsis")
         }
-        .menuStyle(.borderlessButton)
-        .buttonStyle(.plain)
-        .foregroundStyle(Color.white.opacity(0.7))
+        .menuStyle(.button)
+        .fixedSize()
         .help("More")
+    }
+
+    private func headerIconButton(
+        systemName: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            headerIconLabel(systemName: systemName)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func headerIconLabel(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.86))
+            .frame(width: 30, height: 30)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var inputBackground: some View {
