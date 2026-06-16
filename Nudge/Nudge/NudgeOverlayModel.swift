@@ -28,12 +28,13 @@ final class NudgeOverlayModel: ObservableObject {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty, !isLoading else { return }
 
+        let shouldKeepResultPanelOpen = state == .result
         submittedPrompt = trimmedPrompt
         prompt = ""
         responseText = ""
         errorMessage = nil
         isLoading = true
-        state = .loading
+        state = shouldKeepResultPanelOpen ? .result : .loading
 
         Task {
             do {
