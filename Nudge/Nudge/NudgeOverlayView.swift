@@ -372,29 +372,70 @@ struct NudgeOverlayView: View {
     }
 
     private var resultView: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            resultHeaderView
+        ZStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 18) {
+                resultHeaderView
 
-            ScrollView {
-                if model.isLoading {
-                    resultLoadingView
-                } else if let statusKind = model.activeResultStatusKind {
-                    resultStatusView(for: statusKind)
-                } else {
-                    NudgeMarkdownText(markdown: model.displayedResponseText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ScrollView {
+                    if model.isLoading {
+                        resultLoadingView
+                    } else if let statusKind = model.activeResultStatusKind {
+                        resultStatusView(for: statusKind)
+                    } else {
+                        NudgeMarkdownText(markdown: model.displayedResponseText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .scrollIndicators(.hidden)
+
+                if model.activeResultStatusKind == nil {
+                    followUpInputView
                 }
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 30)
+            .padding(.top, 28)
+            .padding(.bottom, 24)
 
-            if model.activeResultStatusKind == nil {
-                followUpInputView
+            if let toastMessage = model.toastMessage {
+                copyToastView(toastMessage)
+                    .padding(.top, 26)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.92).combined(with: .opacity),
+                        removal: .scale(scale: 0.96).combined(with: .opacity)
+                    ))
+                    .zIndex(4)
             }
         }
-        .padding(.horizontal, 30)
-        .padding(.top, 28)
-        .padding(.bottom, 24)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22), value: model.toastMessage)
         .transition(.opacity)
+    }
+
+    private func copyToastView(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.92))
+
+            Text(message)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.9))
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 34)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.72))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .fill(nudgeGlowGradient.opacity(0.16))
+                }
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(nudgeGlowGradient, lineWidth: 1)
+                        .opacity(0.72)
+                }
+                .shadow(color: Color.black.opacity(0.30), radius: 14, y: 8)
+        }
     }
 
     private var resultHeaderView: some View {

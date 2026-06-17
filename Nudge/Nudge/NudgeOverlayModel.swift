@@ -41,6 +41,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var responseText = ""
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
+    @Published private(set) var toastMessage: String?
     @Published private(set) var resultStatusKind: NudgeResultStatusKind?
     @Published var isLoading = false
     @Published private(set) var responseProviderTitle = "Gemini"
@@ -99,6 +100,7 @@ final class NudgeOverlayModel: ObservableObject {
     private var activeFileConversationModel: NudgeSettingsStore.GeminiModel?
     private var lastRequest: LastRequest?
     private var typingTask: Task<Void, Never>?
+    private var toastTask: Task<Void, Never>?
     var onOpenSettings: (() -> Void)?
 
     init(
@@ -277,6 +279,7 @@ final class NudgeOverlayModel: ObservableObject {
 
     func closeResult() {
         cancelTypingResponse()
+        dismissToast()
         responseText = ""
         displayedResponseText = ""
         errorMessage = nil
@@ -298,6 +301,7 @@ final class NudgeOverlayModel: ObservableObject {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(textToCopy, forType: .string)
+        showToast("복사되었습니다")
     }
 
     func saveResponseAsTextFile() {
@@ -508,6 +512,24 @@ final class NudgeOverlayModel: ObservableObject {
     private func cancelTypingResponse() {
         typingTask?.cancel()
         typingTask = nil
+    }
+
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        toastMessage = message
+
+        toastTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_450_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toastMessage = nil
+            self?.toastTask = nil
+        }
+    }
+
+    private func dismissToast() {
+        toastTask?.cancel()
+        toastTask = nil
+        toastMessage = nil
     }
 
     private func startTypingResponse(_ text: String) {
