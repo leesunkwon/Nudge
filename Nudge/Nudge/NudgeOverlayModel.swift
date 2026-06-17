@@ -90,6 +90,7 @@ final class NudgeOverlayModel: ObservableObject {
 
     private let geminiClient: GeminiClient
     private let settingsStore: NudgeSettingsStore
+    private let totalExtractedTextCharacterLimit = 300_000
     private var conversationHistory: [GeminiConversationContent] = []
     private var pendingDroppedFiles: [DroppedFileContext] = []
     private var resultDroppedFileURL: URL?
@@ -221,9 +222,9 @@ final class NudgeOverlayModel: ObservableObject {
             do {
                 let droppedFiles = pendingDroppedFiles
                 let fileRequests = try loadFileRequests(from: droppedFiles, prompt: finalPrompt)
-                let fileContent = GeminiConversationContent.userFiles(
+                let fileContent = GeminiConversationContent.userFileParts(
                     prompt: finalPrompt,
-                    files: fileRequests.map { ($0.data, $0.mimeType) }
+                    fileParts: fileRequests.flatMap(\.parts)
                 )
                 let baseHistory = conversationHistory
                 let response = try await geminiClient.generateText(
@@ -348,9 +349,9 @@ final class NudgeOverlayModel: ObservableObject {
                     submittedPrompt = "\(displayName) - \(prompt)"
                     responseProviderTitle = "Gemini"
                     let fileRequests = try loadFileRequests(from: contexts, prompt: prompt)
-                    let fileContent = GeminiConversationContent.userFiles(
+                    let fileContent = GeminiConversationContent.userFileParts(
                         prompt: prompt,
-                        files: fileRequests.map { ($0.data, $0.mimeType) }
+                        fileParts: fileRequests.flatMap(\.parts)
                     )
                     let response = try await geminiClient.generateText(
                         contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
@@ -477,10 +478,21 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     private func loadFileRequests(from contexts: [DroppedFileContext], prompt: String) throws -> [DropFileRequest] {
-        try contexts.map { try loadFileRequest(from: $0, prompt: prompt) }
+        var remainingTextCharacterLimit = totalExtractedTextCharacterLimit
+        return try contexts.map {
+            try loadFileRequest(
+                from: $0,
+                prompt: prompt,
+                remainingTextCharacterLimit: &remainingTextCharacterLimit
+            )
+        }
     }
 
-    private func loadFileRequest(from context: DroppedFileContext, prompt: String) throws -> DropFileRequest {
+    private func loadFileRequest(
+        from context: DroppedFileContext,
+        prompt: String,
+        remainingTextCharacterLimit: inout Int
+    ) throws -> DropFileRequest {
         let didStartAccessing = context.url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -488,11 +500,55 @@ final class NudgeOverlayModel: ObservableObject {
             }
         }
 
-        return DropFileRequest(
-            data: try Data(contentsOf: context.url),
-            mimeType: context.payloadKind.mimeType,
-            prompt: prompt
-        )
+        switch context.payloadKind {
+        case let .image(mimeType):
+            return DropFileRequest(parts: [
+                .inlineData(try Data(contentsOf: context.url).base64EncodedString(), mimeType: mimeType)
+            ])
+        case .pdf:
+            return DropFileRequest(parts: [
+                .inlineData(try Data(contentsOf: context.url).base64EncodedString(), mimeType: "application/pdf")
+            ])
+        case .text, .code:
+            let extractionLimit = min(NudgeFileTextExtractor.perFileCharacterLimit, remainingTextCharacterLimit)
+            return try textDropFileRequest(from: context, remainingTextCharacterLimit: &remainingTextCharacterLimit) {
+                try NudgeFileTextExtractor.extractPlainText(from: context.url, limit: extractionLimit)
+            }
+        case let .office(kind):
+            let extractionLimit = min(NudgeFileTextExtractor.perFileCharacterLimit, remainingTextCharacterLimit)
+            return try textDropFileRequest(from: context, remainingTextCharacterLimit: &remainingTextCharacterLimit) {
+                try NudgeFileTextExtractor.extractOfficeText(from: context.url, kind: kind, limit: extractionLimit)
+            }
+        }
+    }
+
+    private func textDropFileRequest(
+        from context: DroppedFileContext,
+        remainingTextCharacterLimit: inout Int,
+        extract: () throws -> NudgeExtractedFileText
+    ) throws -> DropFileRequest {
+        guard remainingTextCharacterLimit > 0 else {
+            return DropFileRequest(parts: [
+                .text("""
+                [파일: \(context.displayName)]
+                파일 타입: \(context.payloadKind.kindLabel)
+                내용은 전체 요청 크기 제한으로 포함되지 않았습니다.
+                """)
+            ])
+        }
+
+        let extractedText = try extract()
+        remainingTextCharacterLimit = max(0, remainingTextCharacterLimit - extractedText.text.count)
+        let truncationNotice = extractedText.isTruncated ? "\n\n참고: 이 파일은 길이가 길어 일부 내용만 포함되었습니다." : ""
+
+        return DropFileRequest(parts: [
+            .text("""
+            [파일: \(context.displayName)]
+            파일 타입: \(context.payloadKind.kindLabel)
+            추출 내용:
+            \(extractedText.text)\(truncationNotice)
+            """)
+        ])
     }
 
     private func droppedFileContexts(for urls: [URL]) -> [DroppedFileContext] {
@@ -531,7 +587,45 @@ final class NudgeOverlayModel: ObservableObject {
             return .image(mimeType: mimeType)
         }
 
+        if let officeKind = officeDocumentKind(for: pathExtension) {
+            return .office(kind: officeKind)
+        }
+
+        if codeFileExtensions.contains(pathExtension) {
+            return .code(fileExtension: pathExtension)
+        }
+
+        if textFileExtensions.contains(pathExtension) {
+            return .text(fileExtension: pathExtension)
+        }
+
+        if let type = UTType(filenameExtension: pathExtension),
+           type.conforms(to: .text) {
+            return .text(fileExtension: pathExtension)
+        }
+
         return nil
+    }
+
+    private var textFileExtensions: Set<String> {
+        ["txt", "md"]
+    }
+
+    private var codeFileExtensions: Set<String> {
+        ["swift", "kt", "js", "ts", "tsx", "jsx", "py", "java", "c", "cpp", "h", "hpp", "json", "xml", "html", "css", "yml", "yaml"]
+    }
+
+    private func officeDocumentKind(for pathExtension: String) -> NudgeOfficeDocumentKind? {
+        switch pathExtension {
+        case "docx":
+            .word
+        case "pptx":
+            .powerPoint
+        case "xlsx":
+            .excel
+        default:
+            nil
+        }
     }
 
     private func fallbackImageMimeType(for pathExtension: String) -> String? {
@@ -580,7 +674,7 @@ final class NudgeOverlayModel: ObservableObject {
         submittedPrompt = displayName
         responseProviderTitle = "Nudge"
         resetResponseOutput()
-        errorMessage = "현재는 이미지와 PDF 파일을 우선 지원합니다."
+        errorMessage = "현재는 이미지, PDF, 문서, 텍스트, 코드 파일을 지원합니다."
         resultStatusKind = .unsupportedFile
         state = .result
     }
@@ -667,25 +761,12 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     private func collectionKind(for contexts: [DroppedFileContext]) -> DropFileCollectionKind {
-        let hasImage = contexts.contains { context in
-            if case .image = context.payloadKind { return true }
-            return false
-        }
-        let hasPDF = contexts.contains { context in
-            if case .pdf = context.payloadKind { return true }
-            return false
+        let kinds = Set(contexts.map { $0.payloadKind.collectionKind })
+        guard kinds.count == 1, let kind = kinds.first else {
+            return .mixed
         }
 
-        switch (hasImage, hasPDF) {
-        case (true, true):
-            return .mixed
-        case (true, false):
-            return .image
-        case (false, true):
-            return .pdf
-        default:
-            return .mixed
-        }
+        return kind
     }
 
     private func dragIconName(for contexts: [DroppedFileContext]) -> String {
@@ -723,11 +804,14 @@ final class NudgeOverlayModel: ObservableObject {
             basePrompt = settingsStore.imageAnalysisPrompt
         case .pdf:
             basePrompt = settingsStore.pdfAnalysisPrompt
+        case .code:
+            basePrompt = "코드 파일의 구조, 핵심 동작, 개선할 점을 한국어로 분석해 주세요."
+        case .text:
+            basePrompt = "텍스트 파일의 핵심 내용과 중요한 포인트를 한국어로 정리해 주세요."
+        case .word, .powerPoint, .excel:
+            basePrompt = "문서 내용을 한국어로 분석해 핵심 요약, 주요 내용, 필요한 후속 작업을 정리해 주세요."
         case .mixed:
-            basePrompt = [settingsStore.imageAnalysisPrompt, settingsStore.pdfAnalysisPrompt]
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n\n")
+            basePrompt = "여러 종류의 파일 내용을 함께 분석해 핵심 요약, 공통점, 차이점, 필요한 후속 작업을 정리해 주세요."
         }
 
         return [
@@ -756,6 +840,27 @@ final class NudgeOverlayModel: ObservableObject {
                 NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "PDF에서 실행해야 할 액션 아이템을 뽑아줘"),
                 NudgeFileAnalysisTemplate(title: "표 추출", prompt: "PDF 안의 표나 수치 정보를 찾아 정리해줘")
             ]
+        case .code:
+            return [
+                NudgeFileAnalysisTemplate(title: "코드 설명", prompt: "코드의 목적과 핵심 흐름을 설명해줘"),
+                NudgeFileAnalysisTemplate(title: "개선점", prompt: "코드 품질, 구조, 안정성 관점에서 개선점을 찾아줘"),
+                NudgeFileAnalysisTemplate(title: "리팩토링", prompt: "리팩토링하면 좋은 부분과 방향을 제안해줘"),
+                NudgeFileAnalysisTemplate(title: "버그 위험", prompt: "버그가 날 수 있는 부분이나 엣지 케이스를 찾아줘")
+            ]
+        case .text:
+            return [
+                NudgeFileAnalysisTemplate(title: "요약", prompt: "텍스트의 핵심 내용을 요약해줘"),
+                NudgeFileAnalysisTemplate(title: "핵심 정리", prompt: "중요한 포인트를 항목별로 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "실행해야 할 작업이나 결정 사항을 뽑아줘"),
+                NudgeFileAnalysisTemplate(title: "다듬기", prompt: "문장을 더 자연스럽고 명확하게 다듬어줘")
+            ]
+        case .word, .powerPoint, .excel:
+            return [
+                NudgeFileAnalysisTemplate(title: "요약", prompt: "문서의 핵심 내용을 요약해줘"),
+                NudgeFileAnalysisTemplate(title: "핵심 정리", prompt: "문서의 중요한 포인트를 항목별로 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "문서에서 실행해야 할 액션 아이템을 뽑아줘"),
+                NudgeFileAnalysisTemplate(title: "개선점", prompt: "문서 내용이나 구성을 개선할 부분을 제안해줘")
+            ]
         case .mixed:
             return [
                 NudgeFileAnalysisTemplate(title: "요약", prompt: "여러 파일의 핵심 내용을 종합해서 요약해줘"),
@@ -776,9 +881,7 @@ final class NudgeOverlayModel: ObservableObject {
 }
 
 private struct DropFileRequest {
-    let data: Data
-    let mimeType: String
-    let prompt: String
+    let parts: [GeminiConversationPart]
 }
 
 private struct DroppedFileContext {
@@ -796,6 +899,11 @@ private enum LastRequest {
 private enum DropFileCollectionKind {
     case image
     case pdf
+    case text
+    case code
+    case word
+    case powerPoint
+    case excel
     case mixed
 
     var kindLabel: String {
@@ -804,6 +912,16 @@ private enum DropFileCollectionKind {
             "이미지"
         case .pdf:
             "PDF"
+        case .text:
+            "텍스트"
+        case .code:
+            "코드"
+        case .word:
+            "Word"
+        case .powerPoint:
+            "PowerPoint"
+        case .excel:
+            "Excel"
         case .mixed:
             "파일"
         }
@@ -815,6 +933,16 @@ private enum DropFileCollectionKind {
             "photo.stack"
         case .pdf:
             "doc.text.magnifyingglass"
+        case .text:
+            "doc.plaintext"
+        case .code:
+            "curlybraces"
+        case .word:
+            "doc.text"
+        case .powerPoint:
+            "rectangle.on.rectangle"
+        case .excel:
+            "tablecells"
         case .mixed:
             "square.stack.3d.up"
         }
@@ -826,6 +954,16 @@ private enum DropFileCollectionKind {
             "photo.stack"
         case .pdf:
             "doc.text.magnifyingglass"
+        case .text:
+            "doc.plaintext"
+        case .code:
+            "curlybraces"
+        case .word:
+            "doc.text"
+        case .powerPoint:
+            "rectangle.on.rectangle"
+        case .excel:
+            "tablecells"
         case .mixed:
             "square.stack.3d.up"
         }
@@ -835,15 +973,9 @@ private enum DropFileCollectionKind {
 private enum DropFilePayloadKind {
     case image(mimeType: String)
     case pdf
-
-    var mimeType: String {
-        switch self {
-        case let .image(mimeType):
-            mimeType
-        case .pdf:
-            "application/pdf"
-        }
-    }
+    case text(fileExtension: String)
+    case code(fileExtension: String)
+    case office(kind: NudgeOfficeDocumentKind)
 
     func requestPrompt(settingsStore: NudgeSettingsStore, userQuestion: String) -> String {
         let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -860,6 +992,21 @@ private enum DropFilePayloadKind {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
+        case .text:
+            return ["텍스트 파일의 내용을 바탕으로 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+        case .code:
+            return ["코드 파일의 내용을 바탕으로 구조, 동작, 개선점을 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+        case .office:
+            return ["문서에서 추출한 텍스트를 바탕으로 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
         }
     }
 
@@ -869,6 +1016,19 @@ private enum DropFilePayloadKind {
             "이미지를 놓아주세요"
         case .pdf:
             "PDF를 놓아주세요"
+        case .text:
+            "텍스트 파일을 놓아주세요"
+        case .code:
+            "코드 파일을 놓아주세요"
+        case let .office(kind):
+            switch kind {
+            case .word:
+                "Word 문서를 놓아주세요"
+            case .powerPoint:
+                "프레젠테이션을 놓아주세요"
+            case .excel:
+                "스프레드시트를 놓아주세요"
+            }
         }
     }
 
@@ -878,6 +1038,19 @@ private enum DropFilePayloadKind {
             "photo.badge.arrow.down"
         case .pdf:
             "doc.text.magnifyingglass"
+        case .text:
+            "doc.plaintext"
+        case .code:
+            "curlybraces"
+        case let .office(kind):
+            switch kind {
+            case .word:
+                "doc.text"
+            case .powerPoint:
+                "rectangle.on.rectangle"
+            case .excel:
+                "tablecells"
+            }
         }
     }
 
@@ -887,6 +1060,19 @@ private enum DropFilePayloadKind {
             "photo"
         case .pdf:
             "doc.text.magnifyingglass"
+        case .text:
+            "doc.plaintext"
+        case .code:
+            "curlybraces"
+        case let .office(kind):
+            switch kind {
+            case .word:
+                "doc.text"
+            case .powerPoint:
+                "rectangle.on.rectangle"
+            case .excel:
+                "tablecells"
+            }
         }
     }
 
@@ -896,6 +1082,41 @@ private enum DropFilePayloadKind {
             "이미지"
         case .pdf:
             "PDF"
+        case .text:
+            "텍스트"
+        case .code:
+            "코드"
+        case let .office(kind):
+            switch kind {
+            case .word:
+                "Word"
+            case .powerPoint:
+                "PowerPoint"
+            case .excel:
+                "Excel"
+            }
+        }
+    }
+
+    var collectionKind: DropFileCollectionKind {
+        switch self {
+        case .image:
+            .image
+        case .pdf:
+            .pdf
+        case .text:
+            .text
+        case .code:
+            .code
+        case let .office(kind):
+            switch kind {
+            case .word:
+                .word
+            case .powerPoint:
+                .powerPoint
+            case .excel:
+                .excel
+            }
         }
     }
 }
