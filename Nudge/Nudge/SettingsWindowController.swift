@@ -19,8 +19,8 @@ final class SettingsWindowController: NSWindowController {
         let hostingController = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Nudge 설정"
-        window.setContentSize(NSSize(width: 640, height: 680))
-        window.minSize = NSSize(width: 560, height: 560)
+        window.setContentSize(NSSize(width: 760, height: 620))
+        window.minSize = NSSize(width: 720, height: 560)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = .black

@@ -8,7 +8,63 @@
 import SwiftUI
 
 struct SettingsView: View {
+    private enum SettingsSectionID: String, CaseIterable, Identifiable {
+        case ai
+        case prompt
+        case interaction
+        case animation
+        case reset
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .ai:
+                "AI"
+            case .prompt:
+                "Prompt"
+            case .interaction:
+                "Interaction"
+            case .animation:
+                "Animation"
+            case .reset:
+                "Reset"
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .ai:
+                "Gemini API Key와 모델을 관리합니다."
+            case .prompt:
+                "질문과 파일 분석에 사용할 기본 프롬프트를 조정합니다."
+            case .interaction:
+                "노치 Hover 감지와 닫힘 동작을 조정합니다."
+            case .animation:
+                "Nudge의 움직임과 글로우 강도를 조정합니다."
+            case .reset:
+                "저장된 환경설정을 기본값으로 되돌립니다."
+            }
+        }
+
+        var iconName: String {
+            switch self {
+            case .ai:
+                "sparkles"
+            case .prompt:
+                "text.bubble"
+            case .interaction:
+                "cursorarrow.motionlines"
+            case .animation:
+                "wand.and.rays"
+            case .reset:
+                "arrow.counterclockwise"
+            }
+        }
+    }
+
     @ObservedObject var settingsStore: NudgeSettingsStore
+    @State private var selectedSection: SettingsSectionID = .ai
     @State private var apiKeyInput = ""
     @State private var apiKeyMessage: String?
     @State private var resetMessage: String?
@@ -18,38 +74,58 @@ struct SettingsView: View {
         ZStack {
             settingsBackground
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-                    aiSection
-                    promptSection
-                    interactionSection
-                    animationSection
-                    resetSection
-                }
-                .padding(28)
+            HStack(spacing: 0) {
+                sidebar
+                detailPane
             }
         }
-        .frame(minWidth: 560, minHeight: 560)
+        .frame(minWidth: 720, minHeight: 560)
         .colorScheme(.dark)
         .onAppear {
             settingsStore.refreshAPIKeyStatus()
         }
     }
 
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+
+            VStack(spacing: 6) {
+                ForEach(SettingsSectionID.allCases) { section in
+                    sidebarButton(section)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.top, 24)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 20)
+        .frame(width: 190)
+        .background {
+            Rectangle()
+                .fill(Color.black.opacity(0.34))
+                .overlay(alignment: .trailing) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 1)
+                }
+        }
+    }
+
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 10) {
             ZStack {
                 Circle()
                     .fill(nudgeGlowGradient)
-                    .blur(radius: 8)
+                    .blur(radius: 7)
                     .opacity(0.62)
 
                 Image(systemName: "sparkles")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 42, height: 42)
+            .frame(width: 36, height: 36)
             .background {
                 Circle()
                     .fill(Color.white.opacity(0.08))
@@ -59,20 +135,94 @@ struct SettingsView: View {
                     }
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Nudge 설정")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
+            Text("Nudge")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+        }
+    }
 
-                Text("AI, 프롬프트, Hover 동작, 애니메이션을 조정합니다.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.56))
+    private func sidebarButton(_ section: SettingsSectionID) -> some View {
+        let isSelected = selectedSection == section
+
+        return Button {
+            withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22)) {
+                selectedSection = section
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: section.iconName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 18)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(nudgeGlowGradient) : AnyShapeStyle(Color.white.opacity(0.48)))
+
+                Text(section.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.94) : Color.white.opacity(0.58))
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        }
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var detailPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            detailHeader
+
+            ScrollView {
+                selectedSectionContent
+                    .padding(.horizontal, 26)
+                    .padding(.bottom, 26)
             }
         }
     }
 
+    private var detailHeader: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(selectedSection.title)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(.white)
+
+            Text(selectedSection.description)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.56))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 26)
+        .padding(.top, 28)
+        .padding(.bottom, 20)
+    }
+
+    @ViewBuilder
+    private var selectedSectionContent: some View {
+        switch selectedSection {
+        case .ai:
+            aiSection
+        case .prompt:
+            promptSection
+        case .interaction:
+            interactionSection
+        case .animation:
+            animationSection
+        case .reset:
+            resetSection
+        }
+    }
+
     private var aiSection: some View {
-        settingsSection("AI") {
+        settingsCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -136,7 +286,7 @@ struct SettingsView: View {
     }
 
     private var promptSection: some View {
-        settingsSection("Prompt") {
+        settingsCard {
             VStack(alignment: .leading, spacing: 14) {
                 promptEditor("일반 텍스트 질문 기본 성격", text: $settingsStore.textSystemPrompt)
                 promptEditor("이미지 분석 기본 프롬프트", text: $settingsStore.imageAnalysisPrompt)
@@ -152,7 +302,7 @@ struct SettingsView: View {
     }
 
     private var interactionSection: some View {
-        settingsSection("Interaction") {
+        settingsCard {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -182,7 +332,7 @@ struct SettingsView: View {
     }
 
     private var animationSection: some View {
-        settingsSection("Animation") {
+        settingsCard {
             VStack(alignment: .leading, spacing: 14) {
                 Picker("애니메이션 속도", selection: $settingsStore.animationSpeed) {
                     ForEach(NudgeSettingsStore.AnimationSpeed.allCases) { speed in
@@ -200,7 +350,7 @@ struct SettingsView: View {
     }
 
     private var resetSection: some View {
-        settingsSection("Reset") {
+        settingsCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("모델, 프롬프트, Hover 동작, 애니메이션 설정을 기본값으로 되돌립니다. Gemini API Key는 삭제하지 않습니다.")
                     .font(.system(size: 12, weight: .medium))
@@ -223,26 +373,19 @@ struct SettingsView: View {
         }
     }
 
-    private func settingsSection<Content: View>(
-        _ title: String,
+    private func settingsCard<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.92))
-
-            content()
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.07))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                        }
-                }
+        content()
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.07))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                    }
         }
     }
 
