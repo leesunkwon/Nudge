@@ -249,7 +249,7 @@ struct NudgeOverlayView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Gemini")
+                    Text(model.responseProviderTitle)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.9))
 
