@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import FoundationModels
 
 struct GeminiClient {
     enum GeminiError: LocalizedError {
@@ -48,10 +47,6 @@ struct GeminiClient {
 
     func generateText(contents: [GeminiConversationContent]) async throws -> String {
         try await generateContent(contents: contents.map(GeminiContent.init))
-    }
-
-    func generateText(messages: [AITextConversationMessage]) async throws -> String {
-        try await generateText(contents: messages.map { GeminiConversationContent(textMessage: $0) })
     }
 
     func analyzeFile(data: Data, mimeType: String, prompt: String) async throws -> String {
@@ -117,79 +112,6 @@ struct GeminiClient {
     }
 }
 
-struct AppleFoundationModelClient {
-    enum AppleFoundationModelError: LocalizedError {
-        case unavailable
-        case emptyResponse
-
-        var errorDescription: String? {
-            switch self {
-            case .unavailable:
-                "Apple Intelligence를 사용할 수 없습니다. Gemini로 전환해 주세요."
-            case .emptyResponse:
-                "Apple Intelligence 응답이 비어 있습니다."
-            }
-        }
-    }
-
-    func generateText(messages: [AITextConversationMessage]) async throws -> String {
-        let model = SystemLanguageModel.default
-        guard model.isAvailable else {
-            throw AppleFoundationModelError.unavailable
-        }
-
-        let instructions = messages
-            .filter { $0.role == .system }
-            .map(\.text)
-            .joined(separator: "\n\n")
-        let prompt = messages
-            .filter { $0.role != .system }
-            .map { message in
-                switch message.role {
-                case .system:
-                    return message.text
-                case .user:
-                    return "사용자: \(message.text)"
-                case .assistant:
-                    return "어시스턴트: \(message.text)"
-                }
-            }
-            .joined(separator: "\n\n")
-
-        let session = LanguageModelSession(instructions: instructions.isEmpty ? nil : instructions)
-        let response = try await session.respond(to: prompt)
-        let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            throw AppleFoundationModelError.emptyResponse
-        }
-
-        return text
-    }
-}
-
-struct AITextConversationMessage {
-    enum Role {
-        case system
-        case user
-        case assistant
-    }
-
-    let role: Role
-    let text: String
-
-    static func system(_ text: String) -> AITextConversationMessage {
-        AITextConversationMessage(role: .system, text: text)
-    }
-
-    static func user(_ text: String) -> AITextConversationMessage {
-        AITextConversationMessage(role: .user, text: text)
-    }
-
-    static func assistant(_ text: String) -> AITextConversationMessage {
-        AITextConversationMessage(role: .assistant, text: text)
-    }
-}
-
 struct GeminiConversationContent {
     enum Role: String {
         case user
@@ -231,14 +153,6 @@ struct GeminiConversationContent {
         )
     }
 
-    init(textMessage: AITextConversationMessage) {
-        switch textMessage.role {
-        case .system, .user:
-            self = .userText(textMessage.text)
-        case .assistant:
-            self = .modelText(textMessage.text)
-        }
-    }
 }
 
 enum GeminiConversationPart {

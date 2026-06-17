@@ -41,7 +41,7 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(appleIntelligenceGradient)
+                    .fill(nudgeGlowGradient)
                     .blur(radius: 8)
                     .opacity(0.62)
 
@@ -74,85 +74,61 @@ struct SettingsView: View {
     private var aiSection: some View {
         settingsSection("AI") {
             VStack(alignment: .leading, spacing: 14) {
-                Picker("AI 엔진", selection: $settingsStore.aiProvider) {
-                    ForEach(NudgeSettingsStore.AIProvider.allCases) { provider in
-                        Text(provider.title).tag(provider)
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Gemini API Key")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.88))
+
+                        Text(settingsStore.isAPIKeyConfigured ? "Keychain에 저장됨" : "설정되지 않음")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(settingsStore.isAPIKeyConfigured ? Color(red: 0.50, green: 0.95, blue: 0.66) : Color(red: 1.0, green: 0.74, blue: 0.36))
+                    }
+
+                    Spacer()
+
+                    Button("삭제") {
+                        settingsStore.deleteAPIKey()
+                        apiKeyInput = ""
+                        apiKeyMessage = "API Key를 삭제했습니다."
+                    }
+                    .disabled(!settingsStore.isAPIKeyConfigured)
+                    .buttonStyle(NudgeSettingsButtonStyle(kind: .secondary))
+                }
+
+                SecureField("Gemini API Key 입력", text: $apiKeyInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .background(settingsInputBackground)
+
+                HStack {
+                    Button("저장") {
+                        saveAPIKey()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(NudgeSettingsButtonStyle(kind: .primary))
+
+                    if let apiKeyMessage {
+                        Text(apiKeyMessage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.52))
                     }
                 }
 
-                if settingsStore.aiProvider == .gemini {
-                    Divider()
+                Divider()
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Gemini API Key")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.88))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Gemini 모델")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
 
-                            Text(settingsStore.isAPIKeyConfigured ? "Keychain에 저장됨" : "설정되지 않음")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(settingsStore.isAPIKeyConfigured ? Color(red: 0.50, green: 0.95, blue: 0.66) : Color(red: 1.0, green: 0.74, blue: 0.36))
+                    HStack(spacing: 10) {
+                        ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in
+                            geminiModelOptionButton(model)
                         }
-
-                        Spacer()
-
-                        Button("삭제") {
-                            settingsStore.deleteAPIKey()
-                            apiKeyInput = ""
-                            apiKeyMessage = "API Key를 삭제했습니다."
-                        }
-                        .disabled(!settingsStore.isAPIKeyConfigured)
-                        .buttonStyle(NudgeSettingsButtonStyle(kind: .secondary))
-                    }
-
-                    SecureField("Gemini API Key 입력", text: $apiKeyInput)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.9))
-                        .padding(.horizontal, 12)
-                        .frame(height: 38)
-                        .background(settingsInputBackground)
-
-                    HStack {
-                        Button("저장") {
-                            saveAPIKey()
-                        }
-                        .keyboardShortcut(.defaultAction)
-                        .buttonStyle(NudgeSettingsButtonStyle(kind: .primary))
-
-                        if let apiKeyMessage {
-                            Text(apiKeyMessage)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.52))
-                        }
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Gemini 모델")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.88))
-
-                        HStack(spacing: 10) {
-                            ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in
-                                geminiModelOptionButton(model)
-                            }
-                        }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Apple Intelligence")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.88))
-
-                        Text("일반 텍스트 질문은 온디바이스 Foundation Model로 처리합니다. 이미지/PDF 분석은 기존처럼 Gemini를 사용합니다.")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.56))
-
-                        Text("기기, OS, Apple Intelligence 설정 상태에 따라 사용할 수 없을 수 있습니다.")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.36).opacity(0.9))
                     }
                 }
             }
@@ -310,7 +286,7 @@ struct SettingsView: View {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(appleIntelligenceGradient)
+                            .foregroundStyle(nudgeGlowGradient)
                     }
                 }
                 .animation(.easeOut(duration: 0.16), value: isSelected)
@@ -338,7 +314,7 @@ struct SettingsView: View {
                                 .fill(Color.white.opacity(0.07))
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                        .strokeBorder(appleIntelligenceGradient, lineWidth: 1.2)
+                                        .strokeBorder(nudgeGlowGradient, lineWidth: 1.2)
                                 }
                                 .matchedGeometryEffect(id: "selectedGeminiSettingsModel", in: geminiModelSettingsNamespace)
                         } else {
@@ -365,7 +341,7 @@ struct SettingsView: View {
         .ignoresSafeArea()
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(appleIntelligenceGradient)
+                .fill(nudgeGlowGradient)
                 .frame(height: 1)
                 .blur(radius: 3)
                 .opacity(0.62)
@@ -381,7 +357,7 @@ struct SettingsView: View {
             }
     }
 
-    private var appleIntelligenceGradient: LinearGradient {
+    private var nudgeGlowGradient: LinearGradient {
         LinearGradient(
             colors: [
                 Color(red: 0.25, green: 0.73, blue: 1.0),
