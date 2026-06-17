@@ -12,6 +12,7 @@ import SwiftUI
 @MainActor
 final class NudgeSettingsStore: ObservableObject {
     enum GeminiModel: String, CaseIterable, Identifiable {
+        case auto = "auto"
         case fast = "gemini-3.1-flash-lite"
         case advanced = "gemini-3.1-pro-preview"
 
@@ -19,6 +20,8 @@ final class NudgeSettingsStore: ObservableObject {
 
         var title: String {
             switch self {
+            case .auto:
+                "자동"
             case .fast:
                 "빠름"
             case .advanced:
@@ -27,11 +30,26 @@ final class NudgeSettingsStore: ObservableObject {
         }
 
         var modelName: String {
-            rawValue
+            if self == .auto {
+                return "상황에 따라 자동 선택"
+            }
+
+            return rawValue
+        }
+
+        var requestModelName: String {
+            switch self {
+            case .auto:
+                GeminiModel.fast.rawValue
+            case .fast, .advanced:
+                rawValue
+            }
         }
 
         var description: String {
             switch self {
+            case .auto:
+                "질문과 파일 조건에 맞춰 모델 선택"
             case .fast:
                 "빠른 응답과 일반 질문에 적합"
             case .advanced:
@@ -41,12 +59,14 @@ final class NudgeSettingsStore: ObservableObject {
 
         static func storedValue(_ rawValue: String?) -> GeminiModel {
             switch rawValue {
+            case GeminiModel.auto.rawValue:
+                .auto
             case GeminiModel.advanced.rawValue:
                 .advanced
             case GeminiModel.fast.rawValue:
                 .fast
             default:
-                .fast
+                .auto
             }
         }
     }
@@ -215,7 +235,7 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     func resetPreferencesToDefaults() {
-        selectedModel = .fast
+        selectedModel = .auto
         resetPrompts()
         hoverActivationPadding = Defaults.hoverActivationPadding
         hoverCollapseDelay = Defaults.hoverCollapseDelay

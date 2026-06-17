@@ -65,7 +65,7 @@ struct SettingsView: View {
         var keywords: [String] {
             switch self {
             case .ai:
-                ["AI", "API", "Key", "Gemini", "제미나이", "키", "모델", "빠름", "고급"]
+                ["AI", "API", "Key", "Gemini", "제미나이", "키", "모델", "자동", "빠름", "고급"]
             case .prompt:
                 ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구"]
             case .interaction:
@@ -370,7 +370,7 @@ struct SettingsView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.88))
 
-                    settingHelpText("빠름은 일반 질문에, 고급은 복잡한 분석과 긴 문서 처리에 적합합니다.")
+                    settingHelpText("자동은 질문과 파일 조건에 따라 빠름/고급을 선택합니다. 직접 고정하고 싶으면 빠름 또는 고급을 선택하세요.")
 
                     HStack(spacing: 10) {
                         ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in

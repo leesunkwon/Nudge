@@ -792,7 +792,7 @@ struct NudgeOverlayView: View {
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.trailing, showsModelPicker ? 96 : 18)
+            .padding(.trailing, showsModelPicker ? 142 : 18)
             .padding(.vertical, 11)
 
             if showsModelPicker {
@@ -836,7 +836,7 @@ struct NudgeOverlayView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isDisabled)
-                .help("\(geminiModel.title): \(geminiModel.modelName)")
+                .help("\(geminiModel.title): \(geminiModel.description)")
             }
         }
         .padding(3)
