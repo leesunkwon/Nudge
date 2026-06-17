@@ -39,14 +39,23 @@ struct GeminiClient {
         self.session = session
     }
 
-    func generateText(prompt: String) async throws -> String {
+    func generateText(
+        prompt: String,
+        model: NudgeSettingsStore.GeminiModel? = nil
+    ) async throws -> String {
         try await generateText(contents: [
             GeminiConversationContent.userText(prompt)
-        ])
+        ], model: model)
     }
 
-    func generateText(contents: [GeminiConversationContent]) async throws -> String {
-        try await generateContent(contents: contents.map(GeminiContent.init))
+    func generateText(
+        contents: [GeminiConversationContent],
+        model: NudgeSettingsStore.GeminiModel? = nil
+    ) async throws -> String {
+        try await generateContent(
+            contents: contents.map(GeminiContent.init),
+            model: model ?? settingsStore.selectedModel
+        )
     }
 
     func analyzeFile(data: Data, mimeType: String, prompt: String) async throws -> String {
@@ -59,11 +68,13 @@ struct GeminiClient {
         ])
     }
 
-    private func generateContent(contents: [GeminiContent]) async throws -> String {
+    private func generateContent(
+        contents: [GeminiContent],
+        model: NudgeSettingsStore.GeminiModel
+    ) async throws -> String {
         let apiKey = try resolveAPIKey()
 
-        let model = settingsStore.selectedModel.rawValue
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model.requestModelName):generateContent") else {
             throw GeminiError.invalidURL
         }
 

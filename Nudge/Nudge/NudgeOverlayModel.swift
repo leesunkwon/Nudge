@@ -41,6 +41,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var responseText = ""
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
+    @Published private(set) var toastMessage: String?
     @Published private(set) var resultStatusKind: NudgeResultStatusKind?
     @Published var isLoading = false
     @Published private(set) var responseProviderTitle = "Gemini"
@@ -91,11 +92,15 @@ final class NudgeOverlayModel: ObservableObject {
     private let geminiClient: GeminiClient
     private let settingsStore: NudgeSettingsStore
     private let totalExtractedTextCharacterLimit = 300_000
+    private let longTextPromptThreshold = 1_000
+    private let largeFileByteThreshold: Int64 = 5 * 1024 * 1024
     private var conversationHistory: [GeminiConversationContent] = []
     private var pendingDroppedFiles: [DroppedFileContext] = []
     private var resultDroppedFileURL: URL?
+    private var activeFileConversationModel: NudgeSettingsStore.GeminiModel?
     private var lastRequest: LastRequest?
     private var typingTask: Task<Void, Never>?
+    private var toastTask: Task<Void, Never>?
     var onOpenSettings: (() -> Void)?
 
     init(
@@ -121,26 +126,30 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 if isFileConversationActive {
-                    responseProviderTitle = "Gemini"
+                    let requestModel = resolvedModelForFileFollowUp(prompt: trimmedPrompt)
+                    updateResponseProviderTitle(using: requestModel)
                     let baseHistory = conversationHistory
                     let userContent = GeminiConversationContent.userText(trimmedPrompt)
                     let response = try await geminiClient.generateText(
-                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
+                        model: requestModel
                     )
                     conversationHistory.append(userContent)
                     conversationHistory.append(GeminiConversationContent.modelText(response))
-                    lastRequest = .fileFollowUp(prompt: trimmedPrompt, baseHistory: baseHistory)
+                    lastRequest = .fileFollowUp(prompt: trimmedPrompt, baseHistory: baseHistory, model: requestModel)
                     responseText = response
                 } else {
-                    responseProviderTitle = "Gemini"
+                    let requestModel = resolvedModelForTextPrompt(trimmedPrompt)
+                    updateResponseProviderTitle(using: requestModel)
                     let baseHistory = conversationHistory
                     let userContent = GeminiConversationContent.userText(trimmedPrompt)
                     let response = try await geminiClient.generateText(
-                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
+                        model: requestModel
                     )
                     conversationHistory.append(userContent)
                     conversationHistory.append(GeminiConversationContent.modelText(response))
-                    lastRequest = .text(prompt: trimmedPrompt, baseHistory: baseHistory)
+                    lastRequest = .text(prompt: trimmedPrompt, baseHistory: baseHistory, model: requestModel)
                     responseText = response
                 }
 
@@ -196,6 +205,7 @@ final class NudgeOverlayModel: ObservableObject {
         errorMessage = nil
         resultStatusKind = nil
         conversationHistory.removeAll()
+        activeFileConversationModel = nil
         state = .filePrompt
     }
 
@@ -214,8 +224,10 @@ final class NudgeOverlayModel: ObservableObject {
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
-        responseProviderTitle = "Gemini"
+        let requestModel = resolvedModelForFileContexts(pendingDroppedFiles)
+        updateResponseProviderTitle(using: requestModel)
         conversationHistory.removeAll()
+        activeFileConversationModel = nil
         state = .loading
 
         Task {
@@ -228,11 +240,13 @@ final class NudgeOverlayModel: ObservableObject {
                 )
                 let baseHistory = conversationHistory
                 let response = try await geminiClient.generateText(
-                    contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
+                    contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent),
+                    model: requestModel
                 )
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
-                lastRequest = .file(contexts: droppedFiles, prompt: finalPrompt, baseHistory: baseHistory)
+                activeFileConversationModel = requestModel
+                lastRequest = .file(contexts: droppedFiles, prompt: finalPrompt, baseHistory: baseHistory, model: requestModel)
                 resultDroppedFileURL = droppedFiles.first?.url
                 canOpenDroppedFile = true
                 responseText = response
@@ -265,6 +279,7 @@ final class NudgeOverlayModel: ObservableObject {
 
     func closeResult() {
         cancelTypingResponse()
+        dismissToast()
         responseText = ""
         displayedResponseText = ""
         errorMessage = nil
@@ -274,6 +289,7 @@ final class NudgeOverlayModel: ObservableObject {
         isLoading = false
         responseProviderTitle = "Gemini"
         conversationHistory.removeAll()
+        activeFileConversationModel = nil
         clearDroppedFileState()
         lastRequest = nil
         state = .normal
@@ -285,6 +301,7 @@ final class NudgeOverlayModel: ObservableObject {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(textToCopy, forType: .string)
+        showToast("복사되었습니다")
     }
 
     func saveResponseAsTextFile() {
@@ -326,37 +343,41 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 switch lastRequest {
-                case let .text(prompt, baseHistory):
+                case let .text(prompt, baseHistory, model):
                     submittedPrompt = prompt
-                    responseProviderTitle = "Gemini"
+                    updateResponseProviderTitle(using: model)
                     let userContent = GeminiConversationContent.userText(prompt)
                     let response = try await geminiClient.generateText(
-                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
+                        model: model
                     )
                     conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
                     responseText = response
-                case let .fileFollowUp(prompt, baseHistory):
+                case let .fileFollowUp(prompt, baseHistory, model):
                     submittedPrompt = prompt
-                    responseProviderTitle = "Gemini"
+                    updateResponseProviderTitle(using: model)
                     let userContent = GeminiConversationContent.userText(prompt)
                     let response = try await geminiClient.generateText(
-                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
+                        model: model
                     )
                     conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
                     responseText = response
-                case let .file(contexts, prompt, baseHistory):
+                case let .file(contexts, prompt, baseHistory, model):
                     let displayName = displayName(for: contexts)
                     submittedPrompt = "\(displayName) - \(prompt)"
-                    responseProviderTitle = "Gemini"
+                    updateResponseProviderTitle(using: model)
                     let fileRequests = try loadFileRequests(from: contexts, prompt: prompt)
                     let fileContent = GeminiConversationContent.userFileParts(
                         prompt: prompt,
                         fileParts: fileRequests.flatMap(\.parts)
                     )
                     let response = try await geminiClient.generateText(
-                        contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent),
+                        model: model
                     )
                     conversationHistory = baseHistory + [fileContent, GeminiConversationContent.modelText(response)]
+                    activeFileConversationModel = model
                     resultDroppedFileURL = contexts.first?.url
                     canOpenDroppedFile = true
                     responseText = response
@@ -381,6 +402,44 @@ final class NudgeOverlayModel: ObservableObject {
 
     private var isFileConversationActive: Bool {
         canOpenDroppedFile && !conversationHistory.isEmpty
+    }
+
+    private func resolvedModelForTextPrompt(_ prompt: String) -> NudgeSettingsStore.GeminiModel {
+        switch settingsStore.selectedModel {
+        case .auto:
+            return prompt.count >= longTextPromptThreshold ? .advanced : .fast
+        case .fast, .advanced:
+            return settingsStore.selectedModel
+        }
+    }
+
+    private func resolvedModelForFileFollowUp(prompt: String) -> NudgeSettingsStore.GeminiModel {
+        switch settingsStore.selectedModel {
+        case .auto:
+            return activeFileConversationModel ?? resolvedModelForTextPrompt(prompt)
+        case .fast, .advanced:
+            return settingsStore.selectedModel
+        }
+    }
+
+    private func resolvedModelForFileContexts(_ contexts: [DroppedFileContext]) -> NudgeSettingsStore.GeminiModel {
+        switch settingsStore.selectedModel {
+        case .auto:
+            let shouldUseAdvanced = contexts.count > 1
+                || contexts.contains { $0.payloadKind.prefersAdvancedModel }
+                || totalFileByteCount(for: contexts) >= largeFileByteThreshold
+            return shouldUseAdvanced ? .advanced : .fast
+        case .fast, .advanced:
+            return settingsStore.selectedModel
+        }
+    }
+
+    private func updateResponseProviderTitle(using model: NudgeSettingsStore.GeminiModel) {
+        if settingsStore.selectedModel == .auto {
+            responseProviderTitle = "Gemini · 자동 · \(model.title) 사용"
+        } else {
+            responseProviderTitle = "Gemini · \(model.title)"
+        }
     }
 
     private func resetResponseOutput() {
@@ -453,6 +512,24 @@ final class NudgeOverlayModel: ObservableObject {
     private func cancelTypingResponse() {
         typingTask?.cancel()
         typingTask = nil
+    }
+
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        toastMessage = message
+
+        toastTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_450_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toastMessage = nil
+            self?.toastTask = nil
+        }
+    }
+
+    private func dismissToast() {
+        toastTask?.cancel()
+        toastTask = nil
+        toastMessage = nil
     }
 
     private func startTypingResponse(_ text: String) {
@@ -735,13 +812,17 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     private func totalFileSizeText(for contexts: [DroppedFileContext]) -> String {
-        let totalSize = contexts.reduce(Int64(0)) { partialResult, context in
-            let fileSize = (try? context.url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-            return partialResult + fileSize
-        }
+        let totalSize = totalFileByteCount(for: contexts)
 
         guard totalSize > 0 else { return "크기 알 수 없음" }
         return ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+    }
+
+    private func totalFileByteCount(for contexts: [DroppedFileContext]) -> Int64 {
+        contexts.reduce(Int64(0)) { partialResult, context in
+            let fileSize = (try? context.url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+            return partialResult + fileSize
+        }
     }
 
     private func displayName(for contexts: [DroppedFileContext]) -> String {
@@ -891,9 +972,9 @@ private struct DroppedFileContext {
 }
 
 private enum LastRequest {
-    case text(prompt: String, baseHistory: [GeminiConversationContent])
-    case fileFollowUp(prompt: String, baseHistory: [GeminiConversationContent])
-    case file(contexts: [DroppedFileContext], prompt: String, baseHistory: [GeminiConversationContent])
+    case text(prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
+    case fileFollowUp(prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
+    case file(contexts: [DroppedFileContext], prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
 }
 
 private enum DropFileCollectionKind {
@@ -1095,6 +1176,15 @@ private enum DropFilePayloadKind {
             case .excel:
                 "Excel"
             }
+        }
+    }
+
+    var prefersAdvancedModel: Bool {
+        switch self {
+        case .image, .text:
+            false
+        case .pdf, .code, .office:
+            true
         }
     }
 
