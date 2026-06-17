@@ -398,7 +398,7 @@ struct NudgeOverlayView: View {
 
             if let toastMessage = model.toastMessage {
                 copyToastView(toastMessage)
-                    .padding(.top, 26)
+                    .padding(.top, 74)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.92).combined(with: .opacity),
                         removal: .scale(scale: 0.96).combined(with: .opacity)
