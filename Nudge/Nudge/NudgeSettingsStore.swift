@@ -28,17 +28,41 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     enum GeminiModel: String, CaseIterable, Identifiable {
-        case flashLite = "gemini-3.1-flash-lite"
-        case flash = "gemini-2.5-flash"
+        case fast = "gemini-3.1-flash-lite"
+        case advanced = "gemini-3.1-pro-preview"
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .flashLite:
-                "Gemini 3.1 Flash-Lite"
-            case .flash:
-                "Gemini 2.5 Flash"
+            case .fast:
+                "빠름"
+            case .advanced:
+                "고급"
+            }
+        }
+
+        var modelName: String {
+            rawValue
+        }
+
+        var description: String {
+            switch self {
+            case .fast:
+                "빠른 응답과 일반 질문에 적합"
+            case .advanced:
+                "복잡한 분석, 코드, 긴 문서 처리에 적합"
+            }
+        }
+
+        static func storedValue(_ rawValue: String?) -> GeminiModel {
+            switch rawValue {
+            case GeminiModel.advanced.rawValue:
+                .advanced
+            case GeminiModel.fast.rawValue, "gemini-2.5-flash":
+                .fast
+            default:
+                .fast
             }
         }
     }
@@ -172,7 +196,7 @@ final class NudgeSettingsStore: ObservableObject {
         self.defaults = defaults
         self.keychainStore = keychainStore
 
-        selectedModel = GeminiModel(rawValue: defaults.string(forKey: Keys.selectedModel) ?? "") ?? .flashLite
+        selectedModel = GeminiModel.storedValue(defaults.string(forKey: Keys.selectedModel))
         aiProvider = AIProvider(rawValue: defaults.string(forKey: Keys.aiProvider) ?? "") ?? .gemini
         textSystemPrompt = defaults.string(forKey: Keys.textSystemPrompt) ?? Defaults.textSystemPrompt
         imageAnalysisPrompt = defaults.string(forKey: Keys.imageAnalysisPrompt) ?? Defaults.imageAnalysisPrompt
@@ -213,7 +237,7 @@ final class NudgeSettingsStore: ObservableObject {
 
     func resetPreferencesToDefaults() {
         aiProvider = .gemini
-        selectedModel = .flashLite
+        selectedModel = .fast
         resetPrompts()
         hoverActivationPadding = Defaults.hoverActivationPadding
         hoverCollapseDelay = Defaults.hoverCollapseDelay

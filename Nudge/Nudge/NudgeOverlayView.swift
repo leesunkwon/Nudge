@@ -23,6 +23,10 @@ struct NudgeOverlayView: View {
         state == .loading || (state == .result && model.isLoading)
     }
 
+    private var shouldShowGeminiModelPicker: Bool {
+        state == .filePrompt || model.isFileResult || settingsStore.aiProvider == .gemini
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 21 : 30)
@@ -760,13 +764,16 @@ struct NudgeOverlayView: View {
         fontSize: CGFloat,
         isDisabled: Bool
     ) -> some View {
-        ZStack(alignment: .topLeading) {
+        let showsModelPicker = shouldShowGeminiModelPicker
+
+        return ZStack(alignment: .topLeading) {
             if model.prompt.isEmpty {
                 Text(placeholder)
                     .font(.system(size: fontSize, weight: .medium))
                     .foregroundStyle(appleIntelligenceGradient)
                     .lineLimit(1)
                     .padding(.horizontal, 18)
+                    .padding(.trailing, showsModelPicker ? 104 : 18)
                     .padding(.top, 12)
                     .allowsHitTesting(false)
             }
@@ -790,13 +797,60 @@ struct NudgeOverlayView: View {
                 }
             }
             .padding(.horizontal, 18)
+            .padding(.trailing, showsModelPicker ? 96 : 18)
             .padding(.vertical, 11)
+
+            if showsModelPicker {
+                geminiModelQuickPicker(isDisabled: isDisabled)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+            }
         }
         .frame(height: promptFieldHeight)
         .background(inputBackground(isFocused: isPromptFocused, isDisabled: isDisabled))
         .opacity(isDisabled ? 0.62 : 1)
         .animation(.easeOut(duration: 0.18), value: promptFieldHeight)
         .animation(.easeOut(duration: 0.16), value: isPromptFocused)
+    }
+
+    private func geminiModelQuickPicker(isDisabled: Bool) -> some View {
+        HStack(spacing: 2) {
+            ForEach(NudgeSettingsStore.GeminiModel.allCases) { geminiModel in
+                Button {
+                    settingsStore.selectedModel = geminiModel
+                } label: {
+                    Text(geminiModel.title)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(settingsStore.selectedModel == geminiModel ? 0.92 : 0.52))
+                        .frame(width: 38, height: 24)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(settingsStore.selectedModel == geminiModel ? 0.14 : 0))
+                                .overlay {
+                                    if settingsStore.selectedModel == geminiModel {
+                                        Capsule(style: .continuous)
+                                            .strokeBorder(appleIntelligenceGradient, lineWidth: 1)
+                                            .opacity(0.78)
+                                    }
+                                }
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isDisabled)
+                .help("\(geminiModel.title): \(geminiModel.modelName)")
+            }
+        }
+        .padding(3)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.28))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                }
+        }
+        .opacity(isDisabled ? 0.45 : 1)
     }
 
     private var appleIntelligenceGradient: LinearGradient {
