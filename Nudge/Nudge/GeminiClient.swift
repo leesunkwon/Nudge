@@ -222,6 +222,15 @@ struct GeminiConversationContent {
         )
     }
 
+    static func userFiles(prompt: String, files: [(data: Data, mimeType: String)]) -> GeminiConversationContent {
+        GeminiConversationContent(
+            role: .user,
+            parts: [.text(prompt)] + files.map { file in
+                .inlineData(file.data.base64EncodedString(), mimeType: file.mimeType)
+            }
+        )
+    }
+
     init(textMessage: AITextConversationMessage) {
         switch textMessage.role {
         case .system, .user:

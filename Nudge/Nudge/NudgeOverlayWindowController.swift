@@ -45,14 +45,14 @@ final class NudgeOverlayWindowController: NSObject {
         panel.titlebarAppearsTransparent = true
 
         let containerView = NudgeDragDestinationView(frame: initialFrame)
-        containerView.onDragEntered = { [weak self] url in
+        containerView.onDragEntered = { [weak self] urls in
             Task { @MainActor [weak self] in
-                self?.overlayModel.beginDragging(url: url)
+                self?.overlayModel.beginDragging(urls: urls)
             }
         }
-        containerView.onDragUpdated = { [weak self] url in
+        containerView.onDragUpdated = { [weak self] urls in
             Task { @MainActor [weak self] in
-                self?.overlayModel.beginDragging(url: url)
+                self?.overlayModel.beginDragging(urls: urls)
             }
         }
         containerView.onDragExited = { [weak self] in
@@ -60,9 +60,9 @@ final class NudgeOverlayWindowController: NSObject {
                 self?.overlayModel.cancelDragging()
             }
         }
-        containerView.onFileDropped = { [weak self] url in
+        containerView.onFileDropped = { [weak self] urls in
             Task { @MainActor [weak self] in
-                self?.overlayModel.submitDroppedFile(at: url)
+                self?.overlayModel.submitDroppedFiles(at: urls)
             }
         }
         containerView.autoresizesSubviews = true
@@ -369,10 +369,10 @@ private extension Animation {
 }
 
 private final class NudgeDragDestinationView: NSView {
-    var onDragEntered: ((URL) -> Void)?
-    var onDragUpdated: ((URL) -> Void)?
+    var onDragEntered: (([URL]) -> Void)?
+    var onDragUpdated: (([URL]) -> Void)?
     var onDragExited: (() -> Void)?
-    var onFileDropped: ((URL) -> Void)?
+    var onFileDropped: (([URL]) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -385,20 +385,22 @@ private final class NudgeDragDestinationView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
+        let fileURLs = fileURLs(from: sender.draggingPasteboard)
+        guard !fileURLs.isEmpty else {
             return []
         }
 
-        onDragEntered?(fileURL)
+        onDragEntered?(fileURLs)
         return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
+        let fileURLs = fileURLs(from: sender.draggingPasteboard)
+        guard !fileURLs.isEmpty else {
             return []
         }
 
-        onDragUpdated?(fileURL)
+        onDragUpdated?(fileURLs)
         return .copy
     }
 
@@ -418,24 +420,25 @@ private final class NudgeDragDestinationView: NSView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let fileURL = firstFileURL(from: sender.draggingPasteboard) else {
+        let fileURLs = fileURLs(from: sender.draggingPasteboard)
+        guard !fileURLs.isEmpty else {
             onDragExited?()
             return false
         }
 
-        onFileDropped?(fileURL)
+        onFileDropped?(fileURLs)
         return true
     }
 
-    private func firstFileURL(from pasteboard: NSPasteboard) -> URL? {
+    private func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-            return urls.first
+            return urls
         }
 
         guard let fileURLString = pasteboard.string(forType: .fileURL) else {
-            return nil
+            return []
         }
 
-        return URL(string: fileURLString)
+        return URL(string: fileURLString).map { [$0] } ?? []
     }
 }

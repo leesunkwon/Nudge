@@ -27,29 +27,47 @@ struct NudgeMarkdownText: View {
     private func blockView(for block: NudgeMarkdownBlock) -> some View {
         switch block.kind {
         case let .heading(level, text):
-            Text(inlineAttributedString(
-                text,
-                fontSize: level == 1 ? 19 : 17,
-                regularWeight: .semibold,
-                emphasizedWeight: .bold
-            ))
-                .foregroundStyle(Color.white.opacity(0.94))
-                .textSelection(.enabled)
-                .padding(.top, level == 1 ? 4 : 2)
+            HStack(alignment: .center, spacing: 9) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.33, green: 0.62, blue: 1.0),
+                                Color(red: 0.78, green: 0.38, blue: 1.0),
+                                Color(red: 1.0, green: 0.48, blue: 0.66)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 3, height: headingAccentHeight(for: level))
+
+                Text(inlineAttributedString(
+                    normalizedInlineMarkdown(text),
+                    fontSize: headingFontSize(for: level),
+                    regularWeight: .semibold,
+                    emphasizedWeight: .bold
+                ))
+                    .foregroundStyle(Color.white.opacity(0.96))
+                    .textSelection(.enabled)
+            }
+            .padding(.top, level == 1 ? 5 : 3)
+            .padding(.bottom, 1)
 
         case let .paragraph(text):
-            Text(inlineAttributedString(text, fontSize: 15))
+            Text(inlineAttributedString(normalizedInlineMarkdown(text), fontSize: 15))
                 .lineSpacing(5)
                 .foregroundStyle(Color.white.opacity(0.88))
                 .textSelection(.enabled)
 
-        case let .listItem(text):
+        case let .listItem(marker, text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("•")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.56))
+                Text(marker)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .frame(minWidth: marker == "•" ? 10 : 22, alignment: .trailing)
 
-                Text(inlineAttributedString(text, fontSize: 15))
+                Text(inlineAttributedString(normalizedInlineMarkdown(text), fontSize: 15))
                     .lineSpacing(5)
                     .foregroundStyle(Color.white.opacity(0.88))
                     .textSelection(.enabled)
@@ -76,6 +94,36 @@ struct NudgeMarkdownText: View {
         }
     }
 
+    private func headingFontSize(for level: Int) -> CGFloat {
+        switch level {
+        case 1:
+            return 20
+        case 2:
+            return 18
+        case 3:
+            return 16
+        default:
+            return 15
+        }
+    }
+
+    private func headingAccentHeight(for level: Int) -> CGFloat {
+        switch level {
+        case 1:
+            return 20
+        case 2:
+            return 18
+        case 3:
+            return 16
+        default:
+            return 14
+        }
+    }
+
+    private func normalizedInlineMarkdown(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func inlineAttributedString(
         _ text: String,
         fontSize: CGFloat,
@@ -98,7 +146,7 @@ private struct NudgeMarkdownBlock: Identifiable {
     enum Kind {
         case heading(level: Int, text: String)
         case paragraph(String)
-        case listItem(String)
+        case listItem(marker: String, text: String)
         case code(String)
     }
 }
@@ -176,23 +224,35 @@ private enum NudgeMarkdownParser {
     }
 
     private static func headingBlock(from line: String) -> NudgeMarkdownBlock? {
-        if line.hasPrefix("## ") {
-            return NudgeMarkdownBlock(kind: .heading(level: 2, text: String(line.dropFirst(3))))
-        }
+        let markerCount = line.prefix(while: { $0 == "#" }).count
+        guard (1...4).contains(markerCount) else { return nil }
 
-        if line.hasPrefix("# ") {
-            return NudgeMarkdownBlock(kind: .heading(level: 1, text: String(line.dropFirst(2))))
-        }
+        let markerEndIndex = line.index(line.startIndex, offsetBy: markerCount)
+        guard markerEndIndex < line.endIndex,
+              line[markerEndIndex].isWhitespace else { return nil }
 
-        return nil
+        let textStartIndex = line.index(after: markerEndIndex)
+        return NudgeMarkdownBlock(kind: .heading(level: markerCount, text: String(line[textStartIndex...])))
     }
 
     private static func listItemBlock(from line: String) -> NudgeMarkdownBlock? {
         if line.hasPrefix("- ") || line.hasPrefix("* ") {
-            return NudgeMarkdownBlock(kind: .listItem(String(line.dropFirst(2))))
+            return NudgeMarkdownBlock(kind: .listItem(marker: "•", text: String(line.dropFirst(2))))
         }
 
-        return nil
+        guard let dotIndex = line.firstIndex(of: ".") else { return nil }
+
+        let numberText = line[..<dotIndex]
+        let afterDotIndex = line.index(after: dotIndex)
+        guard !numberText.isEmpty,
+              numberText.allSatisfy(\.isNumber),
+              afterDotIndex < line.endIndex,
+              line[afterDotIndex].isWhitespace else {
+            return nil
+        }
+
+        let textStartIndex = line.index(after: afterDotIndex)
+        return NudgeMarkdownBlock(kind: .listItem(marker: "\(numberText).", text: String(line[textStartIndex...])))
     }
 }
 
