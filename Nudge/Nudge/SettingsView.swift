@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var apiKeyInput = ""
     @State private var apiKeyMessage: String?
     @State private var resetMessage: String?
+    @Namespace private var geminiModelSettingsNamespace
 
     var body: some View {
         ZStack {
@@ -128,9 +129,15 @@ struct SettingsView: View {
 
                     Divider()
 
-                    Picker("Gemini 모델", selection: $settingsStore.selectedModel) {
-                        ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in
-                            Text(model.title).tag(model)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Gemini 모델")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.88))
+
+                        HStack(spacing: 10) {
+                            ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in
+                                geminiModelOptionButton(model)
+                            }
                         }
                     }
                 } else {
@@ -284,6 +291,65 @@ struct SettingsView: View {
                         }
                 }
         }
+    }
+
+    private func geminiModelOptionButton(_ model: NudgeSettingsStore.GeminiModel) -> some View {
+        let isSelected = settingsStore.selectedModel == model
+
+        return Button {
+            withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24)) {
+                settingsStore.selectedModel = model
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    Text(model.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.92))
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(appleIntelligenceGradient)
+                    }
+                }
+                .animation(.easeOut(duration: 0.16), value: isSelected)
+
+                Text(model.modelName)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text(model.description)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.58))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .strokeBorder(appleIntelligenceGradient, lineWidth: 1.2)
+                                }
+                                .matchedGeometryEffect(id: "selectedGeminiSettingsModel", in: geminiModelSettingsNamespace)
+                        } else {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                        }
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.selectedModel)
     }
 
     private var settingsBackground: some View {
