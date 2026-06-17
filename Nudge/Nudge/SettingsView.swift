@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var apiKeyInput = ""
     @State private var apiKeyMessage: String?
     @State private var resetMessage: String?
+    @Namespace private var geminiModelSettingsNamespace
 
     var body: some View {
         ZStack {
@@ -296,7 +297,9 @@ struct SettingsView: View {
         let isSelected = settingsStore.selectedModel == model
 
         return Button {
-            settingsStore.selectedModel = model
+            withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24)) {
+                settingsStore.selectedModel = model
+            }
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 7) {
@@ -310,6 +313,7 @@ struct SettingsView: View {
                             .foregroundStyle(appleIntelligenceGradient)
                     }
                 }
+                .animation(.easeOut(duration: 0.16), value: isSelected)
 
                 Text(model.modelName)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -327,17 +331,25 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.12 : 0.06))
+                    .fill(Color.white.opacity(0.06))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .strokeBorder(
-                                isSelected ? AnyShapeStyle(appleIntelligenceGradient) : AnyShapeStyle(Color.white.opacity(0.09)),
-                                lineWidth: isSelected ? 1.2 : 1
-                            )
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .strokeBorder(appleIntelligenceGradient, lineWidth: 1.2)
+                                }
+                                .matchedGeometryEffect(id: "selectedGeminiSettingsModel", in: geminiModelSettingsNamespace)
+                        } else {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                        }
                     }
             }
         }
         .buttonStyle(.plain)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.selectedModel)
     }
 
     private var settingsBackground: some View {

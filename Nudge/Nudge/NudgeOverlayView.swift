@@ -14,6 +14,7 @@ struct NudgeOverlayView: View {
     @State private var isInputVisible = false
     @State private var promptFieldHeight: CGFloat = 46
     @State private var isPromptFocused = false
+    @Namespace private var geminiModelPickerNamespace
 
     private var state: NudgeOverlayState {
         model.state
@@ -818,22 +819,25 @@ struct NudgeOverlayView: View {
         HStack(spacing: 2) {
             ForEach(NudgeSettingsStore.GeminiModel.allCases) { geminiModel in
                 Button {
-                    settingsStore.selectedModel = geminiModel
+                    withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22)) {
+                        settingsStore.selectedModel = geminiModel
+                    }
                 } label: {
                     Text(geminiModel.title)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color.white.opacity(settingsStore.selectedModel == geminiModel ? 0.92 : 0.52))
                         .frame(width: 38, height: 24)
                         .background {
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(settingsStore.selectedModel == geminiModel ? 0.14 : 0))
-                                .overlay {
-                                    if settingsStore.selectedModel == geminiModel {
+                            if settingsStore.selectedModel == geminiModel {
+                                Capsule(style: .continuous)
+                                    .fill(Color.white.opacity(0.14))
+                                    .overlay {
                                         Capsule(style: .continuous)
                                             .strokeBorder(appleIntelligenceGradient, lineWidth: 1)
                                             .opacity(0.78)
                                     }
-                                }
+                                    .matchedGeometryEffect(id: "selectedGeminiModel", in: geminiModelPickerNamespace)
+                            }
                         }
                 }
                 .buttonStyle(.plain)
@@ -851,6 +855,7 @@ struct NudgeOverlayView: View {
                 }
         }
         .opacity(isDisabled ? 0.45 : 1)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22), value: settingsStore.selectedModel)
     }
 
     private var appleIntelligenceGradient: LinearGradient {
