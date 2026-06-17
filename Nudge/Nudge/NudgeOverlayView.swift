@@ -13,6 +13,7 @@ struct NudgeOverlayView: View {
     @ObservedObject var settingsStore: NudgeSettingsStore
     @State private var isInputVisible = false
     @State private var promptFieldHeight: CGFloat = 46
+    @State private var isPromptFocused = false
 
     private var state: NudgeOverlayState {
         model.state
@@ -87,6 +88,7 @@ struct NudgeOverlayView: View {
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
         promptFieldHeight = 46
+        isPromptFocused = false
 
         switch state {
         case .normal, .dragging, .filePrompt, .loading, .result:
@@ -135,7 +137,7 @@ struct NudgeOverlayView: View {
             .padding(.horizontal, 20)
             .frame(height: 46)
             .frame(maxWidth: .infinity)
-            .background(inputBackground)
+            .background(inputBackground(isFocused: false, isDisabled: false))
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -253,35 +255,7 @@ struct NudgeOverlayView: View {
 
     private var resultView: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(model.responseProviderTitle)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.9))
-
-                    Text(model.submittedPrompt)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .foregroundStyle(Color.white.opacity(0.48))
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    resultActionsMenu
-
-                    headerIconButton(systemName: "doc.on.doc") {
-                        model.copyResponseToPasteboard()
-                    }
-                    .help("Copy")
-
-                    headerIconButton(systemName: "xmark") {
-                        model.closeResult()
-                    }
-                    .help("Close")
-                }
-                .fixedSize()
-            }
+            resultHeaderView
 
             ScrollView {
                 if model.isLoading {
@@ -306,6 +280,137 @@ struct NudgeOverlayView: View {
         .padding(.top, 28)
         .padding(.bottom, 24)
         .transition(.opacity)
+    }
+
+    private var resultHeaderView: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                providerPill
+
+                if model.isFileResult {
+                    resultFileHeader
+                } else {
+                    resultPromptSummary
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            resultActionButtons
+        }
+    }
+
+    private var providerPill: some View {
+        Text(model.responseProviderTitle)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.86))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                    }
+            }
+    }
+
+    private var resultPromptSummary: some View {
+        Text(model.submittedPrompt)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color.white.opacity(0.62))
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var resultFileHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                resultFilePreviewTile
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.droppedFileDisplayName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 6) {
+                        Text(model.droppedFileKindLabel)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(appleIntelligenceGradient)
+
+                        Circle()
+                            .fill(Color.white.opacity(0.22))
+                            .frame(width: 3, height: 3)
+
+                        Text(model.droppedFileSizeText)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.46))
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text(resultFilePromptSummary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.46))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var resultFilePreviewTile: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                }
+
+            if let thumbnail = model.droppedFilePreviewThumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                Image(systemName: model.droppedFilePreviewIconName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .clipped()
+    }
+
+    private var resultFilePromptSummary: String {
+        let filePrefix = "\(model.droppedFileDisplayName) - "
+        if model.submittedPrompt.hasPrefix(filePrefix) {
+            return String(model.submittedPrompt.dropFirst(filePrefix.count))
+        }
+
+        return model.submittedPrompt
+    }
+
+    private var resultActionButtons: some View {
+        HStack(spacing: 8) {
+            resultActionsMenu
+
+            headerIconButton(systemName: "doc.on.doc") {
+                model.copyResponseToPasteboard()
+            }
+            .help("Copy")
+
+            headerIconButton(systemName: "xmark") {
+                model.closeResult()
+            }
+            .help("Close")
+        }
+        .frame(width: 106, alignment: .trailing)
+        .fixedSize()
     }
 
     private var resultLoadingView: some View {
@@ -381,12 +486,19 @@ struct NudgeOverlayView: View {
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var inputBackground: some View {
+    private func inputBackground(isFocused: Bool, isDisabled: Bool) -> some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(Color.white.opacity(0.12))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(isDisabled ? 0.07 : 0.12), lineWidth: 1)
+            }
+            .overlay {
+                if isFocused && !isDisabled {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(appleIntelligenceGradient, lineWidth: 1.2)
+                        .opacity(0.92)
+                }
             }
     }
 
@@ -410,7 +522,13 @@ struct NudgeOverlayView: View {
                 text: $model.prompt,
                 height: $promptFieldHeight,
                 fontSize: fontSize,
-                isDisabled: isDisabled
+                isDisabled: isDisabled,
+                onFocusChange: { isFocused in
+                    guard !isDisabled else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        isPromptFocused = isFocused
+                    }
+                }
             ) {
                 if state == .filePrompt {
                     model.submitFilePrompt()
@@ -422,8 +540,10 @@ struct NudgeOverlayView: View {
             .padding(.vertical, 11)
         }
         .frame(height: promptFieldHeight)
-        .background(inputBackground)
-        .animation(.easeOut(duration: 0.12), value: promptFieldHeight)
+        .background(inputBackground(isFocused: isPromptFocused, isDisabled: isDisabled))
+        .opacity(isDisabled ? 0.62 : 1)
+        .animation(.easeOut(duration: 0.18), value: promptFieldHeight)
+        .animation(.easeOut(duration: 0.16), value: isPromptFocused)
     }
 
     private var appleIntelligenceGradient: LinearGradient {
@@ -446,6 +566,7 @@ private struct NudgeMultilinePromptEditor: NSViewRepresentable {
 
     let fontSize: CGFloat
     let isDisabled: Bool
+    let onFocusChange: (Bool) -> Void
     let onSubmit: () -> Void
 
     private let minHeight: CGFloat = 46
@@ -466,6 +587,7 @@ private struct NudgeMultilinePromptEditor: NSViewRepresentable {
         let textView = NudgePromptTextView()
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onFocusChange = onFocusChange
         textView.drawsBackground = false
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -501,6 +623,7 @@ private struct NudgeMultilinePromptEditor: NSViewRepresentable {
 
         context.coordinator.parent = self
         textView.onSubmit = onSubmit
+        textView.onFocusChange = onFocusChange
         textView.font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         textView.isEditable = !isDisabled
         textView.isSelectable = !isDisabled
@@ -548,6 +671,23 @@ private struct NudgeMultilinePromptEditor: NSViewRepresentable {
 
 private final class NudgePromptTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let didBecomeFirstResponder = super.becomeFirstResponder()
+        if didBecomeFirstResponder {
+            onFocusChange?(true)
+        }
+        return didBecomeFirstResponder
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let didResignFirstResponder = super.resignFirstResponder()
+        if didResignFirstResponder {
+            onFocusChange?(false)
+        }
+        return didResignFirstResponder
+    }
 
     override func keyDown(with event: NSEvent) {
         let isReturnKey = event.keyCode == 36 || event.keyCode == 76

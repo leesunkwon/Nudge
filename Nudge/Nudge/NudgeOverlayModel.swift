@@ -30,6 +30,10 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var droppedFileKindLabel = ""
     @Published private(set) var canOpenDroppedFile = false
 
+    var isFileResult: Bool {
+        canOpenDroppedFile && !droppedFileDisplayName.isEmpty
+    }
+
     private let geminiClient: GeminiClient
     private let appleFoundationModelClient = AppleFoundationModelClient()
     private let settingsStore: NudgeSettingsStore
