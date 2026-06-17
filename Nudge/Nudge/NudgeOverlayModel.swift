@@ -19,6 +19,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published private(set) var responseProviderTitle = "Gemini"
     @Published private(set) var dragPromptIconName = "doc.badge.arrow.up"
     @Published private(set) var dragPromptText = "파일을 놓아주세요"
     @Published private(set) var droppedFileName = ""
@@ -30,8 +31,10 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var canOpenDroppedFile = false
 
     private let geminiClient: GeminiClient
+    private let appleFoundationModelClient = AppleFoundationModelClient()
     private let settingsStore: NudgeSettingsStore
     private var conversationHistory: [GeminiConversationContent] = []
+    private var textConversationHistory: [AITextConversationMessage] = []
     private var pendingDroppedFile: DroppedFileContext?
     private var resultDroppedFileURL: URL?
     private var lastRequest: LastRequest?
@@ -60,14 +63,30 @@ final class NudgeOverlayModel: ObservableObject {
 
         Task {
             do {
-                let baseHistory = conversationHistory
-                let userContent = GeminiConversationContent.userText(trimmedPrompt)
-                let contents = buildRequestContents(baseHistory: baseHistory, userContent: userContent)
-                let response = try await geminiClient.generateText(contents: contents)
-                conversationHistory.append(userContent)
-                conversationHistory.append(GeminiConversationContent.modelText(response))
-                lastRequest = .text(prompt: trimmedPrompt, baseHistory: baseHistory)
-                responseText = response
+                if isFileConversationActive {
+                    responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
+                    let baseHistory = conversationHistory
+                    let userContent = GeminiConversationContent.userText(trimmedPrompt)
+                    let response = try await geminiClient.generateText(
+                        contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
+                    )
+                    conversationHistory.append(userContent)
+                    conversationHistory.append(GeminiConversationContent.modelText(response))
+                    lastRequest = .fileFollowUp(prompt: trimmedPrompt, baseHistory: baseHistory)
+                    responseText = response
+                } else {
+                    let provider = settingsStore.aiProvider
+                    responseProviderTitle = provider.title
+                    let baseHistory = textConversationHistory
+                    let userMessage = AITextConversationMessage.user(trimmedPrompt)
+                    let messages = buildTextMessages(baseHistory: baseHistory, userMessage: userMessage)
+                    let response = try await generateTextResponse(provider: provider, messages: messages)
+                    textConversationHistory.append(userMessage)
+                    textConversationHistory.append(.assistant(response))
+                    lastRequest = .text(prompt: trimmedPrompt, provider: provider, baseHistory: baseHistory)
+                    responseText = response
+                }
+
                 displayedResponseText = ""
                 errorMessage = nil
             } catch {
@@ -118,6 +137,7 @@ final class NudgeOverlayModel: ObservableObject {
         prompt = ""
         resetResponseOutput()
         errorMessage = nil
+        textConversationHistory.removeAll()
         state = .filePrompt
     }
 
@@ -134,6 +154,8 @@ final class NudgeOverlayModel: ObservableObject {
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
+        responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
+        textConversationHistory.removeAll()
         conversationHistory.removeAll()
         state = .loading
 
@@ -186,7 +208,9 @@ final class NudgeOverlayModel: ObservableObject {
         submittedPrompt = ""
         prompt = ""
         isLoading = false
+        responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
         conversationHistory.removeAll()
+        textConversationHistory.removeAll()
         clearDroppedFileState()
         lastRequest = nil
         state = .normal
@@ -239,8 +263,19 @@ final class NudgeOverlayModel: ObservableObject {
         Task {
             do {
                 switch lastRequest {
-                case let .text(prompt, baseHistory):
+                case let .text(prompt, provider, baseHistory):
                     submittedPrompt = prompt
+                    responseProviderTitle = provider.title
+                    let userMessage = AITextConversationMessage.user(prompt)
+                    let response = try await generateTextResponse(
+                        provider: provider,
+                        messages: buildTextMessages(baseHistory: baseHistory, userMessage: userMessage)
+                    )
+                    textConversationHistory = baseHistory + [userMessage, .assistant(response)]
+                    responseText = response
+                case let .fileFollowUp(prompt, baseHistory):
+                    submittedPrompt = prompt
+                    responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
                     let userContent = GeminiConversationContent.userText(prompt)
                     let response = try await geminiClient.generateText(
                         contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent)
@@ -249,6 +284,7 @@ final class NudgeOverlayModel: ObservableObject {
                     responseText = response
                 case let .file(context, prompt, baseHistory):
                     submittedPrompt = "\(context.displayName) - \(prompt)"
+                    responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
                     let fileRequest = try loadFileRequest(from: context, prompt: prompt)
                     let fileContent = GeminiConversationContent.userFile(
                         prompt: fileRequest.prompt,
@@ -283,6 +319,10 @@ final class NudgeOverlayModel: ObservableObject {
         onOpenSettings?()
     }
 
+    private var isFileConversationActive: Bool {
+        canOpenDroppedFile && !conversationHistory.isEmpty
+    }
+
     private func resetResponseOutput() {
         cancelTypingResponse()
         responseText = ""
@@ -301,6 +341,30 @@ final class NudgeOverlayModel: ObservableObject {
         return [
             GeminiConversationContent.userText("시스템 지침:\n\(systemPrompt)")
         ] + baseHistory + [userContent]
+    }
+
+    private func buildTextMessages(
+        baseHistory: [AITextConversationMessage],
+        userMessage: AITextConversationMessage
+    ) -> [AITextConversationMessage] {
+        let systemPrompt = settingsStore.textSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !systemPrompt.isEmpty else {
+            return baseHistory + [userMessage]
+        }
+
+        return [.system(systemPrompt)] + baseHistory + [userMessage]
+    }
+
+    private func generateTextResponse(
+        provider: NudgeSettingsStore.AIProvider,
+        messages: [AITextConversationMessage]
+    ) async throws -> String {
+        switch provider {
+        case .gemini:
+            return try await geminiClient.generateText(messages: messages)
+        case .appleIntelligence:
+            return try await appleFoundationModelClient.generateText(messages: messages)
+        }
     }
 
     private func cancelTypingResponse() {
@@ -480,7 +544,12 @@ private struct DroppedFileContext {
 }
 
 private enum LastRequest {
-    case text(prompt: String, baseHistory: [GeminiConversationContent])
+    case text(
+        prompt: String,
+        provider: NudgeSettingsStore.AIProvider,
+        baseHistory: [AITextConversationMessage]
+    )
+    case fileFollowUp(prompt: String, baseHistory: [GeminiConversationContent])
     case file(context: DroppedFileContext, prompt: String, baseHistory: [GeminiConversationContent])
 }
 
