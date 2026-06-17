@@ -153,6 +153,12 @@ struct GeminiConversationContent {
         )
     }
 
+    static func userFileParts(prompt: String, fileParts: [GeminiConversationPart]) -> GeminiConversationContent {
+        GeminiConversationContent(
+            role: .user,
+            parts: [.text(prompt)] + fileParts
+        )
+    }
 }
 
 enum GeminiConversationPart {
