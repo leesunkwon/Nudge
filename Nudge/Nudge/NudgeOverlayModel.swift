@@ -10,6 +10,16 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
+enum NudgeResultStatusKind {
+    case missingAPIKey
+    case networkFailure
+    case unsupportedFile
+    case appleUnavailable
+    case emptyResponse
+    case genericError
+    case empty
+}
+
 @MainActor
 final class NudgeOverlayModel: ObservableObject {
     @Published var state: NudgeOverlayState = .normal
@@ -18,6 +28,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var responseText = ""
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
+    @Published private(set) var resultStatusKind: NudgeResultStatusKind?
     @Published var isLoading = false
     @Published private(set) var responseProviderTitle = "Gemini"
     @Published private(set) var dragPromptIconName = "doc.badge.arrow.up"
@@ -32,6 +43,26 @@ final class NudgeOverlayModel: ObservableObject {
 
     var isFileResult: Bool {
         canOpenDroppedFile && !droppedFileDisplayName.isEmpty
+    }
+
+    var activeResultStatusKind: NudgeResultStatusKind? {
+        if let resultStatusKind {
+            return resultStatusKind
+        }
+
+        guard state == .result,
+              !isLoading,
+              errorMessage == nil,
+              responseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              displayedResponseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        return .empty
+    }
+
+    var canRetryLastRequest: Bool {
+        lastRequest != nil && !isLoading
     }
 
     private let geminiClient: GeminiClient
@@ -94,9 +125,7 @@ final class NudgeOverlayModel: ObservableObject {
                 displayedResponseText = ""
                 errorMessage = nil
             } catch {
-                responseText = ""
-                displayedResponseText = ""
-                errorMessage = error.localizedDescription
+                setError(error)
             }
 
             isLoading = false
@@ -112,6 +141,7 @@ final class NudgeOverlayModel: ObservableObject {
         prompt = ""
         cancelTypingResponse()
         errorMessage = nil
+        resultStatusKind = nil
         updateDragPresentation(for: url)
         state = .dragging
     }
@@ -125,7 +155,7 @@ final class NudgeOverlayModel: ObservableObject {
         guard !isLoading else { return }
 
         guard let payloadKind = dropFilePayloadKind(for: url) else {
-            showUnsupportedDrop()
+            showUnsupportedDrop(for: url)
             return
         }
 
@@ -141,6 +171,7 @@ final class NudgeOverlayModel: ObservableObject {
         prompt = ""
         resetResponseOutput()
         errorMessage = nil
+        resultStatusKind = nil
         textConversationHistory.removeAll()
         state = .filePrompt
     }
@@ -184,9 +215,7 @@ final class NudgeOverlayModel: ObservableObject {
                 displayedResponseText = ""
                 errorMessage = nil
             } catch {
-                responseText = ""
-                displayedResponseText = ""
-                errorMessage = error.localizedDescription
+                setError(error)
             }
 
             isLoading = false
@@ -209,6 +238,7 @@ final class NudgeOverlayModel: ObservableObject {
         responseText = ""
         displayedResponseText = ""
         errorMessage = nil
+        resultStatusKind = nil
         submittedPrompt = ""
         prompt = ""
         isLoading = false
@@ -307,9 +337,7 @@ final class NudgeOverlayModel: ObservableObject {
                 displayedResponseText = ""
                 errorMessage = nil
             } catch {
-                responseText = ""
-                displayedResponseText = ""
-                errorMessage = error.localizedDescription
+                setError(error)
             }
 
             isLoading = false
@@ -331,6 +359,62 @@ final class NudgeOverlayModel: ObservableObject {
         cancelTypingResponse()
         responseText = ""
         displayedResponseText = ""
+        resultStatusKind = nil
+    }
+
+    private func setError(_ error: Error) {
+        responseText = ""
+        displayedResponseText = ""
+        errorMessage = error.localizedDescription
+        resultStatusKind = statusKind(for: error)
+    }
+
+    private func statusKind(for error: Error) -> NudgeResultStatusKind {
+        if let geminiError = error as? GeminiClient.GeminiError {
+            switch geminiError {
+            case .missingAPIKey:
+                return .missingAPIKey
+            case .emptyResponse:
+                return .emptyResponse
+            case .apiError:
+                return .genericError
+            case .invalidURL, .invalidResponse:
+                return .genericError
+            }
+        }
+
+        if let appleError = error as? AppleFoundationModelClient.AppleFoundationModelError {
+            switch appleError {
+            case .unavailable:
+                return .appleUnavailable
+            case .emptyResponse:
+                return .emptyResponse
+            }
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet,
+                 .cannotFindHost,
+                 .cannotConnectToHost,
+                 .networkConnectionLost,
+                 .timedOut,
+                 .dnsLookupFailed,
+                 .internationalRoamingOff,
+                 .dataNotAllowed,
+                 .secureConnectionFailed:
+                return .networkFailure
+            default:
+                break
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return .networkFailure
+        }
+
+        return .genericError
     }
 
     private func buildRequestContents(
@@ -478,15 +562,15 @@ final class NudgeOverlayModel: ObservableObject {
         dragPromptText = payloadKind.dropPromptText
     }
 
-    private func showUnsupportedDrop() {
-        dragPromptIconName = "exclamationmark.triangle"
-        dragPromptText = "지원하지 않는 파일입니다"
-        state = .dragging
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            guard let self, state == .dragging else { return }
-            state = .normal
-        }
+    private func showUnsupportedDrop(for url: URL) {
+        clearDroppedFileState()
+        prompt = ""
+        submittedPrompt = url.lastPathComponent.isEmpty ? "지원하지 않는 파일" : url.lastPathComponent
+        responseProviderTitle = "Nudge"
+        resetResponseOutput()
+        errorMessage = "현재는 이미지와 PDF 파일을 우선 지원합니다."
+        resultStatusKind = .unsupportedFile
+        state = .result
     }
 
     private func clearDroppedFileState() {

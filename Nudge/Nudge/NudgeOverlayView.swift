@@ -260,13 +260,8 @@ struct NudgeOverlayView: View {
             ScrollView {
                 if model.isLoading {
                     resultLoadingView
-                } else if let errorMessage = model.errorMessage {
-                    Text(errorMessage)
-                        .font(.system(size: 14, weight: .regular))
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
-                        .foregroundStyle(Color(red: 1.0, green: 0.56, blue: 0.56))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let statusKind = model.activeResultStatusKind {
+                    resultStatusView(for: statusKind)
                 } else {
                     NudgeMarkdownText(markdown: model.displayedResponseText)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -274,7 +269,9 @@ struct NudgeOverlayView: View {
             }
             .scrollIndicators(.hidden)
 
-            followUpInputView
+            if model.activeResultStatusKind == nil {
+                followUpInputView
+            }
         }
         .padding(.horizontal, 30)
         .padding(.top, 28)
@@ -416,6 +413,149 @@ struct NudgeOverlayView: View {
     private var resultLoadingView: some View {
         Color.clear
             .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    private func resultStatusView(for kind: NudgeResultStatusKind) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: resultStatusIconName(for: kind))
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(appleIntelligenceGradient)
+                .frame(width: 54, height: 54)
+                .background {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                        }
+                }
+
+            VStack(spacing: 6) {
+                Text(resultStatusTitle(for: kind))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.90))
+                    .multilineTextAlignment(.center)
+
+                Text(resultStatusDescription(for: kind))
+                    .font(.system(size: 13, weight: .medium))
+                    .lineSpacing(3)
+                    .foregroundStyle(Color.white.opacity(0.54))
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: 360)
+            }
+
+            if let actionTitle = resultStatusPrimaryActionTitle(for: kind) {
+                Button {
+                    performResultStatusPrimaryAction(for: kind)
+                } label: {
+                    Text(actionTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(0.11))
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+                                }
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isResultStatusPrimaryActionDisabled(for: kind))
+                .opacity(isResultStatusPrimaryActionDisabled(for: kind) ? 0.45 : 1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+        .padding(.vertical, 8)
+    }
+
+    private func resultStatusIconName(for kind: NudgeResultStatusKind) -> String {
+        switch kind {
+        case .missingAPIKey:
+            "key"
+        case .networkFailure:
+            "wifi.exclamationmark"
+        case .unsupportedFile:
+            "doc.badge.exclamationmark"
+        case .appleUnavailable:
+            "sparkles"
+        case .emptyResponse, .empty:
+            "text.bubble"
+        case .genericError:
+            "exclamationmark.triangle"
+        }
+    }
+
+    private func resultStatusTitle(for kind: NudgeResultStatusKind) -> String {
+        switch kind {
+        case .missingAPIKey:
+            "Gemini API Key가 필요합니다"
+        case .networkFailure:
+            "네트워크 연결을 확인해 주세요"
+        case .unsupportedFile:
+            "지원하지 않는 파일입니다"
+        case .appleUnavailable:
+            "Apple Intelligence를 사용할 수 없습니다"
+        case .emptyResponse:
+            "응답이 비어 있습니다"
+        case .genericError:
+            "요청을 처리하지 못했습니다"
+        case .empty:
+            "표시할 응답이 없습니다"
+        }
+    }
+
+    private func resultStatusDescription(for kind: NudgeResultStatusKind) -> String {
+        switch kind {
+        case .missingAPIKey:
+            "설정에서 Gemini API Key를 입력해 주세요."
+        case .networkFailure:
+            "응답을 불러오지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요."
+        case .unsupportedFile:
+            "현재는 이미지와 PDF 파일을 우선 지원합니다."
+        case .appleUnavailable:
+            "이 기기 또는 현재 macOS 설정에서는 Apple Intelligence를 사용할 수 없습니다. 설정에서 Gemini로 전환해 주세요."
+        case .emptyResponse:
+            "AI가 표시할 내용을 반환하지 않았습니다. 같은 요청을 다시 시도해 보세요."
+        case .genericError:
+            model.errorMessage ?? "잠시 후 다시 시도해 주세요."
+        case .empty:
+            "다시 질문을 입력해 주세요."
+        }
+    }
+
+    private func resultStatusPrimaryActionTitle(for kind: NudgeResultStatusKind) -> String? {
+        switch kind {
+        case .missingAPIKey, .appleUnavailable:
+            "설정 열기"
+        case .networkFailure, .emptyResponse, .genericError:
+            model.canRetryLastRequest ? "다시 시도" : nil
+        case .unsupportedFile, .empty:
+            "닫기"
+        }
+    }
+
+    private func isResultStatusPrimaryActionDisabled(for kind: NudgeResultStatusKind) -> Bool {
+        switch kind {
+        case .networkFailure, .emptyResponse, .genericError:
+            !model.canRetryLastRequest
+        default:
+            false
+        }
+    }
+
+    private func performResultStatusPrimaryAction(for kind: NudgeResultStatusKind) {
+        switch kind {
+        case .missingAPIKey, .appleUnavailable:
+            model.openSettings()
+        case .networkFailure, .emptyResponse, .genericError:
+            model.regenerateLastResponse()
+        case .unsupportedFile, .empty:
+            model.closeResult()
+        }
     }
 
     private var followUpInputView: some View {
