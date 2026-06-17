@@ -61,14 +61,43 @@ struct SettingsView: View {
                 "arrow.counterclockwise"
             }
         }
+
+        var keywords: [String] {
+            switch self {
+            case .ai:
+                ["AI", "API", "Key", "Gemini", "제미나이", "키", "모델", "빠름", "고급"]
+            case .prompt:
+                ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구"]
+            case .interaction:
+                ["Interaction", "Hover", "호버", "마우스", "감지", "민감도", "닫힘", "지연", "입력", "패널"]
+            case .animation:
+                ["Animation", "애니메이션", "속도", "글로우", "효과", "강도", "빛", "전환"]
+            case .reset:
+                ["Reset", "초기화", "기본값", "되돌리기", "리셋"]
+            }
+        }
+
+        func matches(_ query: String) -> Bool {
+            let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !normalizedQuery.isEmpty else { return true }
+
+            return ([title, description] + keywords).contains {
+                $0.lowercased().contains(normalizedQuery)
+            }
+        }
     }
 
     @ObservedObject var settingsStore: NudgeSettingsStore
     @State private var selectedSection: SettingsSectionID = .ai
+    @State private var searchText = ""
     @State private var apiKeyInput = ""
     @State private var apiKeyMessage: String?
     @State private var resetMessage: String?
     @Namespace private var geminiModelSettingsNamespace
+
+    private var filteredSections: [SettingsSectionID] {
+        SettingsSectionID.allCases.filter { $0.matches(searchText) }
+    }
 
     var body: some View {
         ZStack {
@@ -84,15 +113,25 @@ struct SettingsView: View {
         .onAppear {
             settingsStore.refreshAPIKeyStatus()
         }
+        .onChange(of: searchText) { _, _ in
+            guard !filteredSections.isEmpty else { return }
+            guard !filteredSections.contains(selectedSection) else { return }
+            selectedSection = filteredSections[0]
+        }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
+            searchField
 
             VStack(spacing: 6) {
-                ForEach(SettingsSectionID.allCases) { section in
-                    sidebarButton(section)
+                if filteredSections.isEmpty {
+                    searchEmptyState
+                } else {
+                    ForEach(filteredSections) { section in
+                        sidebarButton(section)
+                    }
                 }
             }
 
@@ -110,6 +149,62 @@ struct SettingsView: View {
                         .fill(Color.white.opacity(0.08))
                         .frame(width: 1)
                 }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.42))
+
+            TextField("설정 검색", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.88))
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.34))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                }
+        }
+    }
+
+    private var searchEmptyState: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.34))
+
+            Text("검색 결과가 없습니다")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.56))
+
+            Text("다른 키워드로 찾아보세요.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.36))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.045))
         }
     }
 
@@ -275,6 +370,8 @@ struct SettingsView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.88))
 
+                    settingHelpText("빠름은 일반 질문에, 고급은 복잡한 분석과 긴 문서 처리에 적합합니다.")
+
                     HStack(spacing: 10) {
                         ForEach(NudgeSettingsStore.GeminiModel.allCases) { model in
                             geminiModelOptionButton(model)
@@ -312,6 +409,7 @@ struct SettingsView: View {
                         Text("\(Int(settingsStore.hoverActivationPadding))px")
                             .foregroundStyle(Color.white.opacity(0.48))
                     }
+                    settingHelpText("노치 주변에서 마우스를 얼마나 넓게 감지할지 조정합니다.")
                     Slider(value: $settingsStore.hoverActivationPadding, in: 8...40, step: 1)
                 }
 
@@ -323,10 +421,14 @@ struct SettingsView: View {
                         Text(String(format: "%.2fs", settingsStore.hoverCollapseDelay))
                             .foregroundStyle(Color.white.opacity(0.48))
                     }
+                    settingHelpText("마우스가 패널 밖으로 벗어난 뒤 닫히기까지 기다리는 시간입니다.")
                     Slider(value: $settingsStore.hoverCollapseDelay, in: 0.15...1.2, step: 0.05)
                 }
 
-                Toggle("마우스가 벗어나도 입력 중이면 패널 유지", isOn: $settingsStore.keepsHoverOpenWhileTyping)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("마우스가 벗어나도 입력 중이면 패널 유지", isOn: $settingsStore.keepsHoverOpenWhileTyping)
+                    settingHelpText("질문을 작성하는 동안 패널이 실수로 닫히지 않게 유지합니다.")
+                }
             }
         }
     }
@@ -339,12 +441,14 @@ struct SettingsView: View {
                         Text(speed.title).tag(speed)
                     }
                 }
+                settingHelpText("노치가 열리고 닫히는 상태 전환 움직임의 속도를 조정합니다.")
 
                 Picker("글로우 효과 강도", selection: $settingsStore.glowIntensity) {
                     ForEach(NudgeSettingsStore.GlowIntensity.allCases) { intensity in
                         Text(intensity.title).tag(intensity)
                     }
                 }
+                settingHelpText("Loading 및 Result 상태에서 표시되는 그라데이션 빛의 강도를 조정합니다.")
             }
         }
     }
@@ -371,6 +475,13 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func settingHelpText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.white.opacity(0.42))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func settingsCard<Content: View>(
