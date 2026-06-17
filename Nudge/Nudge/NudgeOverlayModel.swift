@@ -20,6 +20,20 @@ enum NudgeResultStatusKind {
     case empty
 }
 
+struct NudgeFileAnalysisTemplate: Identifiable {
+    let title: String
+    let prompt: String
+
+    var id: String {
+        title
+    }
+}
+
+struct NudgeDroppedFilePreviewItem {
+    let thumbnail: NSImage?
+    let iconName: String
+}
+
 @MainActor
 final class NudgeOverlayModel: ObservableObject {
     @Published var state: NudgeOverlayState = .normal
@@ -38,11 +52,20 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var droppedFileSizeText = ""
     @Published private(set) var droppedFilePreviewIconName = "doc"
     @Published private(set) var droppedFilePreviewThumbnail: NSImage?
+    @Published private(set) var droppedFilePreviewThumbnails: [NSImage] = []
+    @Published private(set) var droppedFilePreviewIconNames: [String] = []
+    @Published private(set) var droppedFilePreviewItems: [NudgeDroppedFilePreviewItem] = []
     @Published private(set) var droppedFileKindLabel = ""
+    @Published private(set) var droppedFileCount = 0
+    @Published private(set) var fileAnalysisTemplates: [NudgeFileAnalysisTemplate] = []
     @Published private(set) var canOpenDroppedFile = false
 
     var isFileResult: Bool {
         canOpenDroppedFile && !droppedFileDisplayName.isEmpty
+    }
+
+    var hasMultipleDroppedFiles: Bool {
+        droppedFileCount > 1
     }
 
     var activeResultStatusKind: NudgeResultStatusKind? {
@@ -70,7 +93,7 @@ final class NudgeOverlayModel: ObservableObject {
     private let settingsStore: NudgeSettingsStore
     private var conversationHistory: [GeminiConversationContent] = []
     private var textConversationHistory: [AITextConversationMessage] = []
-    private var pendingDroppedFile: DroppedFileContext?
+    private var pendingDroppedFiles: [DroppedFileContext] = []
     private var resultDroppedFileURL: URL?
     private var lastRequest: LastRequest?
     private var typingTask: Task<Void, Never>?
@@ -136,13 +159,13 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
-    func beginDragging(url: URL) {
+    func beginDragging(urls: [URL]) {
         guard !isLoading, state != .result else { return }
         prompt = ""
         cancelTypingResponse()
         errorMessage = nil
         resultStatusKind = nil
-        updateDragPresentation(for: url)
+        updateDragPresentation(for: urls)
         state = .dragging
     }
 
@@ -151,23 +174,24 @@ final class NudgeOverlayModel: ObservableObject {
         state = .normal
     }
 
-    func submitDroppedFile(at url: URL) {
+    func submitDroppedFiles(at urls: [URL]) {
         guard !isLoading else { return }
-
-        guard let payloadKind = dropFilePayloadKind(for: url) else {
-            showUnsupportedDrop(for: url)
+        let fileURLs = urls.filter { $0.isFileURL }
+        guard !fileURLs.isEmpty else {
+            showUnsupportedDrop(displayName: "지원하지 않는 파일")
             return
         }
 
-        let displayName = url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent
-        pendingDroppedFile = DroppedFileContext(
-            url: url,
-            displayName: displayName,
-            payloadKind: payloadKind
-        )
-        droppedFileName = pendingDroppedFile?.displayName ?? ""
-        updateDroppedFilePreview(url: url, displayName: displayName, payloadKind: payloadKind)
-        submittedPrompt = droppedFileName
+        let contexts = droppedFileContexts(for: fileURLs)
+        guard contexts.count == fileURLs.count else {
+            showUnsupportedDrop(displayName: unsupportedDropDisplayName(for: fileURLs))
+            return
+        }
+
+        pendingDroppedFiles = contexts
+        droppedFileName = contexts.first?.displayName ?? ""
+        updateDroppedFilesPreview(contexts)
+        submittedPrompt = droppedFileDisplayName
         prompt = ""
         resetResponseOutput()
         errorMessage = nil
@@ -177,14 +201,16 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     func submitFilePrompt() {
-        guard !isLoading, let droppedFile = pendingDroppedFile else { return }
+        guard !isLoading, !pendingDroppedFiles.isEmpty else { return }
 
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalPrompt = droppedFile.payloadKind.requestPrompt(
+        let finalPrompt = requestPrompt(
+            for: pendingDroppedFiles,
             settingsStore: settingsStore,
             userQuestion: trimmedPrompt.isEmpty ? settingsStore.emptyFileQuestionPrompt : trimmedPrompt
         )
-        submittedPrompt = "\(droppedFile.displayName) - \(finalPrompt)"
+        let fileSummary = droppedFileDisplayName.isEmpty ? droppedFileName : droppedFileDisplayName
+        submittedPrompt = "\(fileSummary) - \(finalPrompt)"
         prompt = ""
         resetResponseOutput()
         errorMessage = nil
@@ -196,11 +222,11 @@ final class NudgeOverlayModel: ObservableObject {
 
         Task {
             do {
-                let fileRequest = try loadFileRequest(from: droppedFile, prompt: finalPrompt)
-                let fileContent = GeminiConversationContent.userFile(
-                    prompt: fileRequest.prompt,
-                    data: fileRequest.data,
-                    mimeType: fileRequest.mimeType
+                let droppedFiles = pendingDroppedFiles
+                let fileRequests = try loadFileRequests(from: droppedFiles, prompt: finalPrompt)
+                let fileContent = GeminiConversationContent.userFiles(
+                    prompt: finalPrompt,
+                    files: fileRequests.map { ($0.data, $0.mimeType) }
                 )
                 let baseHistory = conversationHistory
                 let response = try await geminiClient.generateText(
@@ -208,8 +234,8 @@ final class NudgeOverlayModel: ObservableObject {
                 )
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
-                lastRequest = .file(context: droppedFile, prompt: finalPrompt, baseHistory: baseHistory)
-                resultDroppedFileURL = droppedFile.url
+                lastRequest = .file(contexts: droppedFiles, prompt: finalPrompt, baseHistory: baseHistory)
+                resultDroppedFileURL = droppedFiles.first?.url
                 canOpenDroppedFile = true
                 responseText = response
                 displayedResponseText = ""
@@ -231,6 +257,11 @@ final class NudgeOverlayModel: ObservableObject {
         clearDroppedFileState()
         prompt = ""
         state = .normal
+    }
+
+    func applyFileAnalysisTemplate(_ template: NudgeFileAnalysisTemplate) {
+        guard state == .filePrompt, !isLoading else { return }
+        prompt = template.prompt
     }
 
     func closeResult() {
@@ -316,20 +347,20 @@ final class NudgeOverlayModel: ObservableObject {
                     )
                     conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
                     responseText = response
-                case let .file(context, prompt, baseHistory):
-                    submittedPrompt = "\(context.displayName) - \(prompt)"
+                case let .file(contexts, prompt, baseHistory):
+                    let displayName = displayName(for: contexts)
+                    submittedPrompt = "\(displayName) - \(prompt)"
                     responseProviderTitle = NudgeSettingsStore.AIProvider.gemini.title
-                    let fileRequest = try loadFileRequest(from: context, prompt: prompt)
-                    let fileContent = GeminiConversationContent.userFile(
-                        prompt: fileRequest.prompt,
-                        data: fileRequest.data,
-                        mimeType: fileRequest.mimeType
+                    let fileRequests = try loadFileRequests(from: contexts, prompt: prompt)
+                    let fileContent = GeminiConversationContent.userFiles(
+                        prompt: prompt,
+                        files: fileRequests.map { ($0.data, $0.mimeType) }
                     )
                     let response = try await geminiClient.generateText(
                         contents: buildRequestContents(baseHistory: baseHistory, userContent: fileContent)
                     )
                     conversationHistory = baseHistory + [fileContent, GeminiConversationContent.modelText(response)]
-                    resultDroppedFileURL = context.url
+                    resultDroppedFileURL = contexts.first?.url
                     canOpenDroppedFile = true
                     responseText = response
                 }
@@ -482,6 +513,10 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
+    private func loadFileRequests(from contexts: [DroppedFileContext], prompt: String) throws -> [DropFileRequest] {
+        try contexts.map { try loadFileRequest(from: $0, prompt: prompt) }
+    }
+
     private func loadFileRequest(from context: DroppedFileContext, prompt: String) throws -> DropFileRequest {
         let didStartAccessing = context.url.startAccessingSecurityScopedResource()
         defer {
@@ -495,6 +530,17 @@ final class NudgeOverlayModel: ObservableObject {
             mimeType: context.payloadKind.mimeType,
             prompt: prompt
         )
+    }
+
+    private func droppedFileContexts(for urls: [URL]) -> [DroppedFileContext] {
+        urls.compactMap { url in
+            guard let payloadKind = dropFilePayloadKind(for: url) else { return nil }
+            return DroppedFileContext(
+                url: url,
+                displayName: url.lastPathComponent.isEmpty ? "파일" : url.lastPathComponent,
+                payloadKind: payloadKind
+            )
+        }
     }
 
     private func dropFilePayloadKind(for url: URL) -> DropFilePayloadKind? {
@@ -551,21 +597,24 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
-    private func updateDragPresentation(for url: URL) {
-        guard let payloadKind = dropFilePayloadKind(for: url) else {
+    private func updateDragPresentation(for urls: [URL]) {
+        let fileURLs = urls.filter { $0.isFileURL }
+        let contexts = droppedFileContexts(for: fileURLs)
+
+        guard !fileURLs.isEmpty, contexts.count == fileURLs.count else {
             dragPromptIconName = "exclamationmark.triangle"
             dragPromptText = "지원하지 않는 파일입니다"
             return
         }
 
-        dragPromptIconName = payloadKind.iconName
-        dragPromptText = payloadKind.dropPromptText
+        dragPromptIconName = dragIconName(for: contexts)
+        dragPromptText = dropPromptText(for: contexts)
     }
 
-    private func showUnsupportedDrop(for url: URL) {
+    private func showUnsupportedDrop(displayName: String) {
         clearDroppedFileState()
         prompt = ""
-        submittedPrompt = url.lastPathComponent.isEmpty ? "지원하지 않는 파일" : url.lastPathComponent
+        submittedPrompt = displayName
         responseProviderTitle = "Nudge"
         resetResponseOutput()
         errorMessage = "현재는 이미지와 PDF 파일을 우선 지원합니다."
@@ -574,33 +623,50 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     private func clearDroppedFileState() {
-        pendingDroppedFile = nil
+        pendingDroppedFiles = []
         resultDroppedFileURL = nil
         droppedFileName = ""
         droppedFileDisplayName = ""
         droppedFileSizeText = ""
         droppedFilePreviewIconName = "doc"
         droppedFilePreviewThumbnail = nil
+        droppedFilePreviewThumbnails = []
+        droppedFilePreviewIconNames = []
+        droppedFilePreviewItems = []
         droppedFileKindLabel = ""
+        droppedFileCount = 0
+        fileAnalysisTemplates = []
         canOpenDroppedFile = false
     }
 
-    private func updateDroppedFilePreview(
-        url: URL,
-        displayName: String,
-        payloadKind: DropFilePayloadKind
-    ) {
-        droppedFileDisplayName = displayName
-        droppedFileSizeText = fileSizeText(for: url)
-        droppedFilePreviewIconName = payloadKind.previewIconName
-        droppedFileKindLabel = payloadKind.kindLabel
+    private func updateDroppedFilesPreview(_ contexts: [DroppedFileContext]) {
+        droppedFileCount = contexts.count
+        droppedFileDisplayName = displayName(for: contexts)
+        droppedFileSizeText = totalFileSizeText(for: contexts)
+        droppedFileKindLabel = collectionKind(for: contexts).kindLabel
+        droppedFilePreviewIconName = collectionKind(for: contexts).previewIconName
+        droppedFilePreviewIconNames = contexts.prefix(3).map(\.payloadKind.previewIconName)
+        droppedFilePreviewItems = contexts.prefix(3).map { context in
+            let thumbnail: NSImage?
+            if case .image = context.payloadKind {
+                thumbnail = NSImage(contentsOf: context.url)
+            } else {
+                thumbnail = nil
+            }
 
-        switch payloadKind {
-        case .image:
-            droppedFilePreviewThumbnail = NSImage(contentsOf: url)
-        case .pdf:
-            droppedFilePreviewThumbnail = nil
+            return NudgeDroppedFilePreviewItem(
+                thumbnail: thumbnail,
+                iconName: context.payloadKind.previewIconName
+            )
         }
+        droppedFilePreviewThumbnails = contexts
+            .prefix(3)
+            .compactMap { context in
+                guard case .image = context.payloadKind else { return nil }
+                return NSImage(contentsOf: context.url)
+            }
+        droppedFilePreviewThumbnail = droppedFilePreviewThumbnails.first
+        fileAnalysisTemplates = analysisTemplates(for: contexts)
     }
 
     private func fileSizeText(for url: URL) -> String {
@@ -608,6 +674,132 @@ final class NudgeOverlayModel: ObservableObject {
         guard byteCount > 0 else { return "크기 알 수 없음" }
 
         return ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+    }
+
+    private func totalFileSizeText(for contexts: [DroppedFileContext]) -> String {
+        let totalSize = contexts.reduce(Int64(0)) { partialResult, context in
+            let fileSize = (try? context.url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+            return partialResult + fileSize
+        }
+
+        guard totalSize > 0 else { return "크기 알 수 없음" }
+        return ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+    }
+
+    private func displayName(for contexts: [DroppedFileContext]) -> String {
+        guard contexts.count > 1 else {
+            return contexts.first?.displayName ?? "파일"
+        }
+
+        return "\(collectionKind(for: contexts).kindLabel) \(contexts.count)개"
+    }
+
+    private func unsupportedDropDisplayName(for urls: [URL]) -> String {
+        guard urls.count > 1 else {
+            return urls.first?.lastPathComponent.isEmpty == false ? urls[0].lastPathComponent : "지원하지 않는 파일"
+        }
+
+        return "지원하지 않는 파일 \(urls.count)개"
+    }
+
+    private func collectionKind(for contexts: [DroppedFileContext]) -> DropFileCollectionKind {
+        let hasImage = contexts.contains { context in
+            if case .image = context.payloadKind { return true }
+            return false
+        }
+        let hasPDF = contexts.contains { context in
+            if case .pdf = context.payloadKind { return true }
+            return false
+        }
+
+        switch (hasImage, hasPDF) {
+        case (true, true):
+            return .mixed
+        case (true, false):
+            return .image
+        case (false, true):
+            return .pdf
+        default:
+            return .mixed
+        }
+    }
+
+    private func dragIconName(for contexts: [DroppedFileContext]) -> String {
+        if contexts.count == 1 {
+            return contexts[0].payloadKind.iconName
+        }
+
+        return collectionKind(for: contexts).dragIconName
+    }
+
+    private func dropPromptText(for contexts: [DroppedFileContext]) -> String {
+        if contexts.count == 1 {
+            return contexts[0].payloadKind.dropPromptText
+        }
+
+        return "\(collectionKind(for: contexts).kindLabel) \(contexts.count)개를 놓아주세요"
+    }
+
+    private func requestPrompt(
+        for contexts: [DroppedFileContext],
+        settingsStore: NudgeSettingsStore,
+        userQuestion: String
+    ) -> String {
+        guard contexts.count > 1 else {
+            return contexts[0].payloadKind.requestPrompt(settingsStore: settingsStore, userQuestion: userQuestion)
+        }
+
+        let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackQuestion = question.isEmpty ? NudgeSettingsStore.Defaults.emptyFileQuestionPrompt : question
+        let kind = collectionKind(for: contexts)
+        let basePrompt: String
+
+        switch kind {
+        case .image:
+            basePrompt = settingsStore.imageAnalysisPrompt
+        case .pdf:
+            basePrompt = settingsStore.pdfAnalysisPrompt
+        case .mixed:
+            basePrompt = [settingsStore.imageAnalysisPrompt, settingsStore.pdfAnalysisPrompt]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n\n")
+        }
+
+        return [
+            "여러 파일을 함께 분석해 주세요. 파일 간 공통점, 차이점, 연결되는 맥락이 있으면 함께 정리해 주세요.",
+            basePrompt,
+            "사용자 요청: \(fallbackQuestion)"
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+    }
+
+    private func analysisTemplates(for contexts: [DroppedFileContext]) -> [NudgeFileAnalysisTemplate] {
+        switch collectionKind(for: contexts) {
+        case .image:
+            return [
+                NudgeFileAnalysisTemplate(title: "설명", prompt: "이미지의 주요 피사체와 장면을 간단히 설명해줘"),
+                NudgeFileAnalysisTemplate(title: "분위기", prompt: "이미지의 분위기, 색감, 감정적 인상을 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "OCR", prompt: "이미지에서 읽을 수 있는 텍스트를 추출하고 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "디자인 피드백", prompt: "디자인 관점에서 구도, 색감, 가독성, 개선점을 피드백해줘")
+            ]
+        case .pdf:
+            return [
+                NudgeFileAnalysisTemplate(title: "요약", prompt: "PDF의 핵심 내용을 요약해줘"),
+                NudgeFileAnalysisTemplate(title: "목차", prompt: "PDF의 목차와 문서 구조를 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "PDF에서 실행해야 할 액션 아이템을 뽑아줘"),
+                NudgeFileAnalysisTemplate(title: "표 추출", prompt: "PDF 안의 표나 수치 정보를 찾아 정리해줘")
+            ]
+        case .mixed:
+            return [
+                NudgeFileAnalysisTemplate(title: "요약", prompt: "여러 파일의 핵심 내용을 종합해서 요약해줘"),
+                NudgeFileAnalysisTemplate(title: "비교", prompt: "파일들을 서로 비교해서 중요한 차이를 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "공통점", prompt: "파일들 사이의 공통점을 찾아 정리해줘"),
+                NudgeFileAnalysisTemplate(title: "차이점", prompt: "파일들 사이의 차이점을 중심으로 정리해줘")
+            ]
+        }
     }
 
     private func defaultSaveFileName() -> String {
@@ -638,7 +830,46 @@ private enum LastRequest {
         baseHistory: [AITextConversationMessage]
     )
     case fileFollowUp(prompt: String, baseHistory: [GeminiConversationContent])
-    case file(context: DroppedFileContext, prompt: String, baseHistory: [GeminiConversationContent])
+    case file(contexts: [DroppedFileContext], prompt: String, baseHistory: [GeminiConversationContent])
+}
+
+private enum DropFileCollectionKind {
+    case image
+    case pdf
+    case mixed
+
+    var kindLabel: String {
+        switch self {
+        case .image:
+            "이미지"
+        case .pdf:
+            "PDF"
+        case .mixed:
+            "파일"
+        }
+    }
+
+    var dragIconName: String {
+        switch self {
+        case .image:
+            "photo.stack"
+        case .pdf:
+            "doc.text.magnifyingglass"
+        case .mixed:
+            "square.stack.3d.up"
+        }
+    }
+
+    var previewIconName: String {
+        switch self {
+        case .image:
+            "photo.stack"
+        case .pdf:
+            "doc.text.magnifyingglass"
+        case .mixed:
+            "square.stack.3d.up"
+        }
+    }
 }
 
 private enum DropFilePayloadKind {

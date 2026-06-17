@@ -177,7 +177,12 @@ struct NudgeOverlayView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 4)
-            .frame(height: 48)
+            .frame(height: 58)
+
+            if !model.fileAnalysisTemplates.isEmpty {
+                fileTemplateChipsView
+                    .padding(.top, 14)
+            }
 
             HStack(spacing: 12) {
                 gradientPromptField(
@@ -210,13 +215,23 @@ struct NudgeOverlayView: View {
                 .help("Cancel")
                 .fixedSize()
             }
-            .padding(.top, 12)
+            .padding(.top, 14)
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
     }
 
     private var filePreviewTile: some View {
+        Group {
+            if model.hasMultipleDroppedFiles {
+                multiFilePreviewStack
+            } else {
+                singleFilePreviewTile
+            }
+        }
+    }
+
+    private var singleFilePreviewTile: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.white.opacity(0.10))
@@ -239,6 +254,77 @@ struct NudgeOverlayView: View {
         }
         .frame(width: 48, height: 48)
         .clipped()
+    }
+
+    private var multiFilePreviewStack: some View {
+        ZStack {
+            ForEach(Array(previewStackIndices.enumerated()), id: \.offset) { offset, index in
+                filePreviewStackItem(at: index)
+                    .offset(x: CGFloat(offset) * 8, y: CGFloat(offset) * -4)
+                    .zIndex(Double(offset))
+            }
+        }
+        .frame(width: 64, height: 56, alignment: .center)
+    }
+
+    private var previewStackIndices: [Int] {
+        Array(0..<min(3, model.droppedFilePreviewItems.count))
+    }
+
+    private func filePreviewStackItem(at index: Int) -> some View {
+        let item = model.droppedFilePreviewItems[index]
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                }
+
+            if let thumbnail = item.thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 42, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                Image(systemName: item.iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(appleIntelligenceGradient)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .clipped()
+    }
+
+    private var fileTemplateChipsView: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(model.fileAnalysisTemplates) { template in
+                    Button {
+                        model.applyFileAnalysisTemplate(template)
+                    } label: {
+                        Text(template.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.82))
+                            .padding(.horizontal, 11)
+                            .frame(height: 30)
+                            .background {
+                                Capsule(style: .continuous)
+                                    .fill(Color.white.opacity(0.09))
+                                    .overlay {
+                                        Capsule(style: .continuous)
+                                            .strokeBorder(Color.white.opacity(0.11), lineWidth: 1)
+                                    }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private var loadingView: some View {
