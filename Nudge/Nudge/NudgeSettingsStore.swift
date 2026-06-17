@@ -11,22 +11,6 @@ import SwiftUI
 
 @MainActor
 final class NudgeSettingsStore: ObservableObject {
-    enum AIProvider: String, CaseIterable, Identifiable {
-        case gemini
-        case appleIntelligence
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .gemini:
-                "Gemini"
-            case .appleIntelligence:
-                "Apple Intelligence"
-            }
-        }
-    }
-
     enum GeminiModel: String, CaseIterable, Identifiable {
         case fast = "gemini-3.1-flash-lite"
         case advanced = "gemini-3.1-pro-preview"
@@ -59,7 +43,7 @@ final class NudgeSettingsStore: ObservableObject {
             switch rawValue {
             case GeminiModel.advanced.rawValue:
                 .advanced
-            case GeminiModel.fast.rawValue, "gemini-2.5-flash":
+            case GeminiModel.fast.rawValue:
                 .fast
             default:
                 .fast
@@ -144,10 +128,6 @@ final class NudgeSettingsStore: ObservableObject {
         didSet { defaults.set(selectedModel.rawValue, forKey: Keys.selectedModel) }
     }
 
-    @Published var aiProvider: AIProvider {
-        didSet { defaults.set(aiProvider.rawValue, forKey: Keys.aiProvider) }
-    }
-
     @Published var textSystemPrompt: String {
         didSet { defaults.set(textSystemPrompt, forKey: Keys.textSystemPrompt) }
     }
@@ -197,7 +177,6 @@ final class NudgeSettingsStore: ObservableObject {
         self.keychainStore = keychainStore
 
         selectedModel = GeminiModel.storedValue(defaults.string(forKey: Keys.selectedModel))
-        aiProvider = AIProvider(rawValue: defaults.string(forKey: Keys.aiProvider) ?? "") ?? .gemini
         textSystemPrompt = defaults.string(forKey: Keys.textSystemPrompt) ?? Defaults.textSystemPrompt
         imageAnalysisPrompt = defaults.string(forKey: Keys.imageAnalysisPrompt) ?? Defaults.imageAnalysisPrompt
         pdfAnalysisPrompt = defaults.string(forKey: Keys.pdfAnalysisPrompt) ?? Defaults.pdfAnalysisPrompt
@@ -236,7 +215,6 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     func resetPreferencesToDefaults() {
-        aiProvider = .gemini
         selectedModel = .fast
         resetPrompts()
         hoverActivationPadding = Defaults.hoverActivationPadding
@@ -247,7 +225,6 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     private enum Keys {
-        static let aiProvider = "aiProvider"
         static let selectedModel = "selectedModel"
         static let textSystemPrompt = "textSystemPrompt"
         static let imageAnalysisPrompt = "imageAnalysisPrompt"

@@ -25,7 +25,7 @@ struct NudgeOverlayView: View {
     }
 
     private var shouldShowGeminiModelPicker: Bool {
-        state == .filePrompt || model.isFileResult || settingsStore.aiProvider == .gemini
+        true
     }
 
     var body: some View {
@@ -40,7 +40,7 @@ struct NudgeOverlayView: View {
                         if state == .dragging {
                             NudgeUnifiedSurfaceShape(cornerRadius: 30)
                                 .strokeBorder(
-                                    appleIntelligenceGradient,
+                                    nudgeGlowGradient,
                                     style: StrokeStyle(lineWidth: 1.4, dash: [8, 8])
                                 )
                                 .opacity(0.82)
@@ -133,7 +133,7 @@ struct NudgeOverlayView: View {
             HStack(spacing: 10) {
                 Image(systemName: model.dragPromptIconName)
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
 
                 Text(model.dragPromptText)
                     .font(.system(size: 16, weight: .semibold))
@@ -166,7 +166,7 @@ struct NudgeOverlayView: View {
                     HStack(spacing: 6) {
                         Text(model.droppedFileKindLabel)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(appleIntelligenceGradient)
+                            .foregroundStyle(nudgeGlowGradient)
 
                         Circle()
                             .fill(Color.white.opacity(0.25))
@@ -254,7 +254,7 @@ struct NudgeOverlayView: View {
             } else {
                 Image(systemName: model.droppedFilePreviewIconName)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
             }
         }
         .frame(width: 48, height: 48)
@@ -296,7 +296,7 @@ struct NudgeOverlayView: View {
             } else {
                 Image(systemName: item.iconName)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
             }
         }
         .frame(width: 42, height: 42)
@@ -308,7 +308,7 @@ struct NudgeOverlayView: View {
             HStack(spacing: 7) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
 
                 Text("빠른 분석 템플릿")
                     .font(.system(size: 11, weight: .semibold))
@@ -352,7 +352,7 @@ struct NudgeOverlayView: View {
                     .overlay {
                         Capsule(style: .continuous)
                             .strokeBorder(
-                                isSelected ? AnyShapeStyle(appleIntelligenceGradient) : AnyShapeStyle(Color.white.opacity(0.11)),
+                                isSelected ? AnyShapeStyle(nudgeGlowGradient) : AnyShapeStyle(Color.white.opacity(0.11)),
                                 lineWidth: isSelected ? 1.2 : 1
                             )
                     }
@@ -453,7 +453,7 @@ struct NudgeOverlayView: View {
                     HStack(spacing: 6) {
                         Text(model.droppedFileKindLabel)
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(appleIntelligenceGradient)
+                            .foregroundStyle(nudgeGlowGradient)
 
                         Circle()
                             .fill(Color.white.opacity(0.22))
@@ -494,7 +494,7 @@ struct NudgeOverlayView: View {
             } else {
                 Image(systemName: model.droppedFilePreviewIconName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
             }
         }
         .frame(width: 36, height: 36)
@@ -537,7 +537,7 @@ struct NudgeOverlayView: View {
         VStack(spacing: 14) {
             Image(systemName: resultStatusIconName(for: kind))
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(appleIntelligenceGradient)
+                .foregroundStyle(nudgeGlowGradient)
                 .frame(width: 54, height: 54)
                 .background {
                     Circle()
@@ -598,8 +598,6 @@ struct NudgeOverlayView: View {
             "wifi.exclamationmark"
         case .unsupportedFile:
             "doc.badge.exclamationmark"
-        case .appleUnavailable:
-            "sparkles"
         case .emptyResponse, .empty:
             "text.bubble"
         case .genericError:
@@ -615,8 +613,6 @@ struct NudgeOverlayView: View {
             "네트워크 연결을 확인해 주세요"
         case .unsupportedFile:
             "지원하지 않는 파일입니다"
-        case .appleUnavailable:
-            "Apple Intelligence를 사용할 수 없습니다"
         case .emptyResponse:
             "응답이 비어 있습니다"
         case .genericError:
@@ -634,8 +630,6 @@ struct NudgeOverlayView: View {
             "응답을 불러오지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요."
         case .unsupportedFile:
             "현재는 이미지와 PDF 파일을 우선 지원합니다."
-        case .appleUnavailable:
-            "이 기기 또는 현재 macOS 설정에서는 Apple Intelligence를 사용할 수 없습니다. 설정에서 Gemini로 전환해 주세요."
         case .emptyResponse:
             "AI가 표시할 내용을 반환하지 않았습니다. 같은 요청을 다시 시도해 보세요."
         case .genericError:
@@ -647,7 +641,7 @@ struct NudgeOverlayView: View {
 
     private func resultStatusPrimaryActionTitle(for kind: NudgeResultStatusKind) -> String? {
         switch kind {
-        case .missingAPIKey, .appleUnavailable:
+        case .missingAPIKey:
             "설정 열기"
         case .networkFailure, .emptyResponse, .genericError:
             model.canRetryLastRequest ? "다시 시도" : nil
@@ -667,7 +661,7 @@ struct NudgeOverlayView: View {
 
     private func performResultStatusPrimaryAction(for kind: NudgeResultStatusKind) {
         switch kind {
-        case .missingAPIKey, .appleUnavailable:
+        case .missingAPIKey:
             model.openSettings()
         case .networkFailure, .emptyResponse, .genericError:
             model.regenerateLastResponse()
@@ -754,7 +748,7 @@ struct NudgeOverlayView: View {
             .overlay {
                 if isFocused && !isDisabled {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(appleIntelligenceGradient, lineWidth: 1.2)
+                        .strokeBorder(nudgeGlowGradient, lineWidth: 1.2)
                         .opacity(0.92)
                 }
             }
@@ -771,7 +765,7 @@ struct NudgeOverlayView: View {
             if model.prompt.isEmpty {
                 Text(placeholder)
                     .font(.system(size: fontSize, weight: .medium))
-                    .foregroundStyle(appleIntelligenceGradient)
+                    .foregroundStyle(nudgeGlowGradient)
                     .lineLimit(1)
                     .padding(.horizontal, 18)
                     .padding(.trailing, showsModelPicker ? 104 : 18)
@@ -833,7 +827,7 @@ struct NudgeOverlayView: View {
                                     .fill(Color.white.opacity(0.14))
                                     .overlay {
                                         Capsule(style: .continuous)
-                                            .strokeBorder(appleIntelligenceGradient, lineWidth: 1)
+                                            .strokeBorder(nudgeGlowGradient, lineWidth: 1)
                                             .opacity(0.78)
                                     }
                                     .matchedGeometryEffect(id: "selectedGeminiModel", in: geminiModelPickerNamespace)
@@ -858,7 +852,7 @@ struct NudgeOverlayView: View {
         .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.22), value: settingsStore.selectedModel)
     }
 
-    private var appleIntelligenceGradient: LinearGradient {
+    private var nudgeGlowGradient: LinearGradient {
         LinearGradient(
             colors: [
                 Color(red: 0.25, green: 0.73, blue: 1.0),
