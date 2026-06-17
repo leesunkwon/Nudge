@@ -5,12 +5,14 @@
 //  Created by Codex on 6/16/26.
 //
 
+import AppKit
 import SwiftUI
 
 struct NudgeOverlayView: View {
     @ObservedObject var model: NudgeOverlayModel
     @ObservedObject var settingsStore: NudgeSettingsStore
     @State private var isInputVisible = false
+    @State private var promptFieldHeight: CGFloat = 46
 
     private var state: NudgeOverlayState {
         model.state
@@ -84,6 +86,8 @@ struct NudgeOverlayView: View {
     }
 
     private func updateInputVisibility(for state: NudgeOverlayState) {
+        promptFieldHeight = 46
+
         switch state {
         case .normal, .dragging, .filePrompt, .loading, .result:
             isInputVisible = false
@@ -184,18 +188,20 @@ struct NudgeOverlayView: View {
                 Button {
                     model.cancelFilePrompt()
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 32, height: 46)
-                        .background {
-                            Circle()
-                                .fill(Color.white.opacity(0.13))
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                                }
-                        }
-                        .contentShape(Circle())
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.13))
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                            }
+                            .frame(width: 32, height: 32)
+
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(width: 32, height: promptFieldHeight)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.white.opacity(0.84))
@@ -389,32 +395,35 @@ struct NudgeOverlayView: View {
         fontSize: CGFloat,
         isDisabled: Bool
     ) -> some View {
-        ZStack(alignment: .leading) {
+        ZStack(alignment: .topLeading) {
             if model.prompt.isEmpty {
                 Text(placeholder)
                     .font(.system(size: fontSize, weight: .medium))
                     .foregroundStyle(appleIntelligenceGradient)
                     .lineLimit(1)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
                     .allowsHitTesting(false)
             }
 
-            TextField("", text: $model.prompt)
-                .textFieldStyle(.plain)
-                .font(.system(size: fontSize, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .tint(Color(red: 0.46, green: 0.78, blue: 1.0))
-                .disabled(isDisabled)
-                .onSubmit {
-                    if state == .filePrompt {
-                        model.submitFilePrompt()
-                    } else {
-                        model.submitPrompt()
-                    }
+            NudgeMultilinePromptEditor(
+                text: $model.prompt,
+                height: $promptFieldHeight,
+                fontSize: fontSize,
+                isDisabled: isDisabled
+            ) {
+                if state == .filePrompt {
+                    model.submitFilePrompt()
+                } else {
+                    model.submitPrompt()
                 }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
         }
-        .padding(.horizontal, 18)
-        .frame(height: 46)
+        .frame(height: promptFieldHeight)
         .background(inputBackground)
+        .animation(.easeOut(duration: 0.12), value: promptFieldHeight)
     }
 
     private var appleIntelligenceGradient: LinearGradient {
@@ -429,6 +438,147 @@ struct NudgeOverlayView: View {
             endPoint: .trailing
         )
     }
+}
+
+private struct NudgeMultilinePromptEditor: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var height: CGFloat
+
+    let fontSize: CGFloat
+    let isDisabled: Bool
+    let onSubmit: () -> Void
+
+    private let minHeight: CGFloat = 46
+    private let maxHeight: CGFloat = 112
+    private let verticalPadding: CGFloat = 22
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = NudgePromptTextView()
+        textView.delegate = context.coordinator
+        textView.onSubmit = onSubmit
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.allowsUndo = true
+        textView.textColor = NSColor.white.withAlphaComponent(0.92)
+        textView.insertionPointColor = NSColor(
+            calibratedRed: 0.46,
+            green: 0.78,
+            blue: 1.0,
+            alpha: 1.0
+        )
+        textView.font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.string = text
+
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        context.coordinator.recalculateHeight()
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NudgePromptTextView else { return }
+
+        context.coordinator.parent = self
+        textView.onSubmit = onSubmit
+        textView.font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        textView.isEditable = !isDisabled
+        textView.isSelectable = !isDisabled
+        textView.textColor = NSColor.white.withAlphaComponent(isDisabled ? 0.46 : 0.92)
+
+        if textView.string != text {
+            textView.string = text
+        }
+
+        DispatchQueue.main.async {
+            context.coordinator.recalculateHeight()
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: NudgeMultilinePromptEditor
+        weak var textView: NSTextView?
+
+        init(parent: NudgeMultilinePromptEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+            recalculateHeight()
+        }
+
+        func recalculateHeight() {
+            guard let textView else { return }
+
+            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            let usedHeight = textView.layoutManager?.usedRect(for: textView.textContainer!).height ?? 0
+            let nextHeight = min(
+                max(parent.minHeight, ceil(usedHeight) + parent.verticalPadding),
+                parent.maxHeight
+            )
+
+            if abs(parent.height - nextHeight) > 0.5 {
+                parent.height = nextHeight
+            }
+        }
+    }
+}
+
+private final class NudgePromptTextView: NSTextView {
+    var onSubmit: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let isReturnKey = event.keyCode == 36 || event.keyCode == 76
+
+        if isReturnKey {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let shouldInsertNewline = modifiers.contains(.shift) || modifiers.contains(.option)
+
+            if shouldInsertNewline {
+                insertNewline(nil)
+            } else {
+                onSubmit?()
+            }
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
+
+private extension NSEvent.ModifierFlags {
+    static let deviceIndependentFlagsMask: NSEvent.ModifierFlags = [
+        .capsLock,
+        .shift,
+        .control,
+        .option,
+        .command,
+        .numericPad,
+        .help,
+        .function
+    ]
 }
 
 private struct NudgeUnifiedSurfaceShape: InsettableShape {
@@ -467,7 +617,7 @@ private struct NudgeUnifiedSurfaceShape: InsettableShape {
         return path
     }
 
-    func inset(by amount: CGFloat) -> some InsettableShape {
+    func inset(by amount: CGFloat) -> NudgeUnifiedSurfaceShape {
         var shape = self
         shape.insetAmount += amount
         return shape
