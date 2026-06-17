@@ -40,7 +40,7 @@ struct NudgeMarkdownText: View {
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 3, height: level == 1 ? 20 : 17)
+                    .frame(width: 3, height: headingAccentHeight(for: level))
 
                 Text(inlineAttributedString(
                     normalizedInlineMarkdown(text),
@@ -100,8 +100,23 @@ struct NudgeMarkdownText: View {
             return 20
         case 2:
             return 18
-        default:
+        case 3:
             return 16
+        default:
+            return 15
+        }
+    }
+
+    private func headingAccentHeight(for level: Int) -> CGFloat {
+        switch level {
+        case 1:
+            return 20
+        case 2:
+            return 18
+        case 3:
+            return 16
+        default:
+            return 14
         }
     }
 
@@ -210,7 +225,7 @@ private enum NudgeMarkdownParser {
 
     private static func headingBlock(from line: String) -> NudgeMarkdownBlock? {
         let markerCount = line.prefix(while: { $0 == "#" }).count
-        guard (1...3).contains(markerCount) else { return nil }
+        guard (1...4).contains(markerCount) else { return nil }
 
         let markerEndIndex = line.index(line.startIndex, offsetBy: markerCount)
         guard markerEndIndex < line.endIndex,
