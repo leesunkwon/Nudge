@@ -58,6 +58,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var droppedFileKindLabel = ""
     @Published private(set) var droppedFileCount = 0
     @Published private(set) var fileAnalysisTemplates: [NudgeFileAnalysisTemplate] = []
+    @Published private(set) var selectedFileAnalysisTemplateID: String?
     @Published private(set) var canOpenDroppedFile = false
 
     var isFileResult: Bool {
@@ -261,6 +262,7 @@ final class NudgeOverlayModel: ObservableObject {
 
     func applyFileAnalysisTemplate(_ template: NudgeFileAnalysisTemplate) {
         guard state == .filePrompt, !isLoading else { return }
+        selectedFileAnalysisTemplateID = template.id
         prompt = template.prompt
     }
 
@@ -636,6 +638,7 @@ final class NudgeOverlayModel: ObservableObject {
         droppedFileKindLabel = ""
         droppedFileCount = 0
         fileAnalysisTemplates = []
+        selectedFileAnalysisTemplateID = nil
         canOpenDroppedFile = false
     }
 

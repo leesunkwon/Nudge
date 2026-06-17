@@ -299,32 +299,59 @@ struct NudgeOverlayView: View {
     }
 
     private var fileTemplateChipsView: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(model.fileAnalysisTemplates) { template in
-                    Button {
-                        model.applyFileAnalysisTemplate(template)
-                    } label: {
-                        Text(template.title)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.82))
-                            .padding(.horizontal, 11)
-                            .frame(height: 30)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.09))
-                                    .overlay {
-                                        Capsule(style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.11), lineWidth: 1)
-                                    }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(appleIntelligenceGradient)
+
+                Text("빠른 분석 템플릿")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.62))
+
+                Text("선택하면 질문창에 채워져요")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.38))
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(model.fileAnalysisTemplates) { template in
+                        Button {
+                            model.applyFileAnalysisTemplate(template)
+                        } label: {
+                            fileTemplateChip(template)
+                        }
+                        .buttonStyle(.plain)
+                        .help("\(template.title) 템플릿을 질문창에 입력")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
+    }
+
+    private func fileTemplateChip(_ template: NudgeFileAnalysisTemplate) -> some View {
+        let isSelected = model.selectedFileAnalysisTemplateID == template.id
+
+        return Text(template.title)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(isSelected ? 0.94 : 0.82))
+            .padding(.horizontal, 11)
+            .frame(height: 30)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(isSelected ? 0.15 : 0.09))
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                isSelected ? AnyShapeStyle(appleIntelligenceGradient) : AnyShapeStyle(Color.white.opacity(0.11)),
+                                lineWidth: isSelected ? 1.2 : 1
+                            )
+                    }
+            }
     }
 
     private var loadingView: some View {
