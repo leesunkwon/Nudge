@@ -28,14 +28,18 @@ struct NudgeOverlayView: View {
         true
     }
 
+    private var themePalette: NudgeThemePalette {
+        settingsStore.notchTheme.palette
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 21 : 30)
-                .fill(Color.black.opacity(0.95))
+                .fill(themePalette.surfaceColor.opacity(themePalette.surfaceOpacity))
                 .overlay {
                     ZStack {
                         NudgeUnifiedSurfaceShape(cornerRadius: state == .normal ? 21 : 30)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity), lineWidth: 1)
 
                         if state == .dragging {
                             NudgeUnifiedSurfaceShape(cornerRadius: 30)
@@ -50,6 +54,7 @@ struct NudgeOverlayView: View {
                         if isShowingLoadingGlow {
                             NudgeBreathingGlowView(
                                 shape: NudgeUnifiedSurfaceShape(cornerRadius: state == .loading ? 30 : 32),
+                                palette: themePalette,
                                 intensity: (state == .loading ? 0.34 : 0.38) * settingsStore.glowIntensity.multiplier
                             )
                             .padding(state == .loading ? 3 : 0)
@@ -59,12 +64,12 @@ struct NudgeOverlayView: View {
                 }
 
             Rectangle()
-                .fill(Color.black.opacity(0.95))
+                .fill(themePalette.surfaceColor.opacity(themePalette.topMaskOpacity))
                 .frame(height: 32)
                 .allowsHitTesting(false)
 
             if isShowingLoadingGlow {
-                NudgeTopBreathingGlowStrip()
+                NudgeTopBreathingGlowStrip(palette: themePalette)
                     .frame(height: 32)
                     .opacity(settingsStore.glowIntensity.multiplier)
                     .allowsHitTesting(false)
@@ -379,7 +384,10 @@ struct NudgeOverlayView: View {
             Spacer()
                 .frame(height: 64)
 
-            NudgeBreathingGlowCapsule(intensity: settingsStore.glowIntensity.multiplier)
+            NudgeBreathingGlowCapsule(
+                palette: themePalette,
+                intensity: settingsStore.glowIntensity.multiplier
+            )
                 .frame(height: 46)
 
             loadingStatusControls(textSize: 12, progressMaxWidth: nil)
@@ -441,7 +449,7 @@ struct NudgeOverlayView: View {
         .frame(height: 34)
         .background {
             Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.72))
+                .fill(themePalette.surfaceColor.opacity(min(0.86, themePalette.surfaceOpacity + 0.06)))
                 .overlay {
                     Capsule(style: .continuous)
                         .fill(nudgeGlowGradient.opacity(0.16))
@@ -630,10 +638,10 @@ struct NudgeOverlayView: View {
 
             ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(Color.white.opacity(themePalette.progressTrackOpacity))
 
                 Capsule(style: .continuous)
-                    .fill(nudgeGlowGradient)
+                    .fill(themePalette.progressGradient)
                     .frame(width: max(8, proxy.size.width * clampedProgress))
                     .shadow(color: Color.white.opacity(0.22), radius: 5, y: 1)
             }
@@ -658,10 +666,10 @@ struct NudgeOverlayView: View {
             .frame(height: 28)
             .background {
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(Color.white.opacity(themePalette.buttonFillOpacity))
                     .overlay {
                         Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity + 0.04), lineWidth: 1)
                     }
             }
             .contentShape(Capsule(style: .continuous))
@@ -866,10 +874,10 @@ struct NudgeOverlayView: View {
             .frame(width: 30, height: 30)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(Color.white.opacity(themePalette.buttonFillOpacity))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity + 0.04), lineWidth: 1)
                     }
             }
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -877,10 +885,10 @@ struct NudgeOverlayView: View {
 
     private func inputBackground(isFocused: Bool, isDisabled: Bool) -> some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color.white.opacity(0.12))
+            .fill(Color.white.opacity(themePalette.inputFillOpacity))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(isDisabled ? 0.07 : 0.12), lineWidth: 1)
+                    .strokeBorder(themePalette.strokeColor.opacity(isDisabled ? 0.07 : themePalette.strokeOpacity + 0.04), lineWidth: 1)
             }
             .overlay {
                 if isFocused && !isDisabled {
@@ -979,10 +987,10 @@ struct NudgeOverlayView: View {
         .padding(3)
         .background {
             Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.28))
+                .fill(themePalette.surfaceColor.opacity(0.28))
                 .overlay {
                     Capsule(style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                        .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity + 0.02), lineWidth: 1)
                 }
         }
         .opacity(isDisabled ? 0.45 : 1)
@@ -990,16 +998,7 @@ struct NudgeOverlayView: View {
     }
 
     private var nudgeGlowGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.25, green: 0.73, blue: 1.0),
-                Color(red: 0.57, green: 0.45, blue: 1.0),
-                Color(red: 1.0, green: 0.42, blue: 0.78),
-                Color(red: 1.0, green: 0.64, blue: 0.36)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+        themePalette.glowGradient
     }
 }
 
@@ -1209,6 +1208,7 @@ private struct NudgeUnifiedSurfaceShape: InsettableShape {
 
 private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
     let shape: GlowShape
+    let palette: NudgeThemePalette
     let intensity: Double
 
     var body: some View {
@@ -1220,12 +1220,7 @@ private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
             shape
                 .fill(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.25, green: 0.74, blue: 1.0).opacity(0.25 + breath * 0.18),
-                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.30 + breath * 0.20),
-                            Color(red: 1.0, green: 0.40, blue: 0.80).opacity(0.22 + breath * 0.18),
-                            Color(red: 1.0, green: 0.65, blue: 0.34).opacity(0.18 + breath * 0.14)
-                        ],
+                        colors: palette.glowColors.map { $0.opacity(0.22 + breath * 0.20) },
                         startPoint: UnitPoint(x: -0.20 + drift * 0.34, y: 0.05),
                         endPoint: UnitPoint(x: 0.86 + drift * 0.30, y: 1.0)
                     )
@@ -1238,11 +1233,7 @@ private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
                     shape
                         .strokeBorder(
                             LinearGradient(
-                                colors: [
-                                    Color(red: 0.35, green: 0.78, blue: 1.0).opacity(0.20 + breath * 0.28),
-                                    Color(red: 0.95, green: 0.48, blue: 0.94).opacity(0.28 + breath * 0.22),
-                                    Color(red: 1.0, green: 0.74, blue: 0.36).opacity(0.16 + breath * 0.18)
-                                ],
+                                colors: palette.subtleGlowColors.map { $0.opacity(0.18 + breath * 0.26) },
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ),
@@ -1256,6 +1247,7 @@ private struct NudgeBreathingGlowView<GlowShape: InsettableShape>: View {
 }
 
 private struct NudgeBreathingGlowCapsule: View {
+    let palette: NudgeThemePalette
     let intensity: Double
 
     var body: some View {
@@ -1265,17 +1257,12 @@ private struct NudgeBreathingGlowCapsule: View {
             let drift = (sin(phase * 0.95) + 1) / 2
 
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.08 + breath * 0.03))
+                .fill(Color.white.opacity(palette.inputFillOpacity * 0.65 + breath * 0.03))
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    Color(red: 0.23, green: 0.76, blue: 1.0).opacity(0.20),
-                                    Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.28 + breath * 0.14),
-                                    Color(red: 1.0, green: 0.42, blue: 0.80).opacity(0.22 + breath * 0.12),
-                                    Color(red: 1.0, green: 0.68, blue: 0.34).opacity(0.18)
-                                ],
+                                colors: palette.glowColors.map { $0.opacity(0.18 + breath * 0.14) },
                                 startPoint: UnitPoint(x: -0.25 + drift * 0.44, y: 0.5),
                                 endPoint: UnitPoint(x: 0.84 + drift * 0.36, y: 0.5)
                             )
@@ -1286,7 +1273,7 @@ private struct NudgeBreathingGlowCapsule: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12 + breath * 0.10), lineWidth: 1)
+                        .strokeBorder(palette.strokeColor.opacity(palette.strokeOpacity + breath * 0.10), lineWidth: 1)
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
                 .opacity(intensity)
@@ -1296,6 +1283,8 @@ private struct NudgeBreathingGlowCapsule: View {
 }
 
 private struct NudgeTopBreathingGlowStrip: View {
+    let palette: NudgeThemePalette
+
     var body: some View {
         TimelineView(.animation) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
@@ -1305,12 +1294,7 @@ private struct NudgeTopBreathingGlowStrip: View {
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.25, green: 0.74, blue: 1.0).opacity(0.16 + breath * 0.10),
-                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.18 + breath * 0.13),
-                            Color(red: 1.0, green: 0.40, blue: 0.80).opacity(0.14 + breath * 0.10),
-                            Color(red: 1.0, green: 0.65, blue: 0.34).opacity(0.12 + breath * 0.08)
-                        ],
+                        colors: palette.glowColors.map { $0.opacity(0.12 + breath * 0.10) },
                         startPoint: UnitPoint(x: -0.16 + drift * 0.30, y: 0.5),
                         endPoint: UnitPoint(x: 0.88 + drift * 0.28, y: 0.5)
                     )

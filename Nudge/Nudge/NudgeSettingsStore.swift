@@ -144,6 +144,41 @@ final class NudgeSettingsStore: ObservableObject {
         }
     }
 
+    enum NotchTheme: String, CaseIterable, Identifiable {
+        case nudgeDefault
+        case geminiGlow
+        case mono
+        case glass
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .nudgeDefault:
+                "Nudge 기본"
+            case .geminiGlow:
+                "Gemini Glow"
+            case .mono:
+                "Mono"
+            case .glass:
+                "Glass"
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .nudgeDefault:
+                "블랙 표면과 은은한 멀티컬러 글로우"
+            case .geminiGlow:
+                "더 선명한 블루/퍼플/핑크 그라데이션"
+            case .mono:
+                "블랙/화이트 중심의 차분한 단색 스타일"
+            case .glass:
+                "반투명 유리 질감과 약한 stroke 중심 스타일"
+            }
+        }
+    }
+
     @Published var selectedModel: GeminiModel {
         didSet { defaults.set(selectedModel.rawValue, forKey: Keys.selectedModel) }
     }
@@ -184,6 +219,10 @@ final class NudgeSettingsStore: ObservableObject {
         didSet { defaults.set(glowIntensity.rawValue, forKey: Keys.glowIntensity) }
     }
 
+    @Published var notchTheme: NotchTheme {
+        didSet { defaults.set(notchTheme.rawValue, forKey: Keys.notchTheme) }
+    }
+
     @Published private(set) var isAPIKeyConfigured: Bool
 
     private let defaults: UserDefaults
@@ -206,6 +245,7 @@ final class NudgeSettingsStore: ObservableObject {
         keepsHoverOpenWhileTyping = defaults.object(forKey: Keys.keepsHoverOpenWhileTyping) as? Bool ?? Defaults.keepsHoverOpenWhileTyping
         animationSpeed = AnimationSpeed(rawValue: defaults.string(forKey: Keys.animationSpeed) ?? "") ?? .smooth
         glowIntensity = GlowIntensity(rawValue: defaults.string(forKey: Keys.glowIntensity) ?? "") ?? .normal
+        notchTheme = NotchTheme(rawValue: defaults.string(forKey: Keys.notchTheme) ?? "") ?? .nudgeDefault
         isAPIKeyConfigured = keychainStore.loadAPIKey() != nil
     }
 
@@ -242,6 +282,7 @@ final class NudgeSettingsStore: ObservableObject {
         keepsHoverOpenWhileTyping = Defaults.keepsHoverOpenWhileTyping
         animationSpeed = .smooth
         glowIntensity = .normal
+        notchTheme = .nudgeDefault
     }
 
     private enum Keys {
@@ -255,6 +296,7 @@ final class NudgeSettingsStore: ObservableObject {
         static let keepsHoverOpenWhileTyping = "keepsHoverOpenWhileTyping"
         static let animationSpeed = "animationSpeed"
         static let glowIntensity = "glowIntensity"
+        static let notchTheme = "notchTheme"
     }
 
     enum Defaults {
