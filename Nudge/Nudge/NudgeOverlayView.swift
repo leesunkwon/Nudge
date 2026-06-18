@@ -382,22 +382,7 @@ struct NudgeOverlayView: View {
             NudgeBreathingGlowCapsule(intensity: settingsStore.glowIntensity.multiplier)
                 .frame(height: 46)
 
-            if let loadingStatusText = model.loadingStatusText {
-                Text(loadingStatusText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.64))
-                    .transition(.opacity)
-            }
-
-            if let uploadProgress = model.uploadProgress {
-                uploadProgressBar(uploadProgress)
-                    .transition(.opacity)
-            }
-
-            if model.isCancellableLoading {
-                loadingCancelButton
-                    .padding(.top, 2)
-            }
+            loadingStatusControls(textSize: 12, progressMaxWidth: nil)
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -609,25 +594,34 @@ struct NudgeOverlayView: View {
         VStack(spacing: 14) {
             Spacer()
 
+            loadingStatusControls(textSize: 13, progressMaxWidth: 280)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    private func loadingStatusControls(textSize: CGFloat, progressMaxWidth: CGFloat?) -> some View {
+        VStack(spacing: 8) {
             if let loadingStatusText = model.loadingStatusText {
                 Text(loadingStatusText)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: textSize, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.64))
                     .transition(.opacity)
             }
 
             if let uploadProgress = model.uploadProgress {
                 uploadProgressBar(uploadProgress)
-                    .frame(maxWidth: 280)
+                    .frame(maxWidth: progressMaxWidth)
+                    .transition(.opacity)
             }
 
             if model.isCancellableLoading {
                 loadingCancelButton
+                    .padding(.top, -1)
             }
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
+        .frame(maxWidth: .infinity)
     }
 
     private func uploadProgressBar(_ progress: Double) -> some View {
