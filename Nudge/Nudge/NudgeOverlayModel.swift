@@ -8,6 +8,7 @@
 import Combine
 import AppKit
 import Foundation
+import PDFKit
 import UniformTypeIdentifiers
 
 enum NudgeResultStatusKind {
@@ -33,6 +34,17 @@ struct NudgeDroppedFilePreviewItem {
     let iconName: String
 }
 
+private enum NudgeFileProcessingError: LocalizedError {
+    case pdfLimitExceeded
+
+    var errorDescription: String? {
+        switch self {
+        case .pdfLimitExceeded:
+            "PDF는 최대 50MB 또는 1000페이지까지 지원합니다."
+        }
+    }
+}
+
 @MainActor
 final class NudgeOverlayModel: ObservableObject {
     @Published var state: NudgeOverlayState = .normal
@@ -41,6 +53,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var responseText = ""
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
+    @Published private(set) var loadingStatusText: String?
     @Published private(set) var toastMessage: String?
     @Published private(set) var resultStatusKind: NudgeResultStatusKind?
     @Published var isLoading = false
@@ -94,6 +107,9 @@ final class NudgeOverlayModel: ObservableObject {
     private let totalExtractedTextCharacterLimit = 300_000
     private let longTextPromptThreshold = 1_000
     private let largeFileByteThreshold: Int64 = 5 * 1024 * 1024
+    private let inlineDataByteThreshold: Int64 = 14 * 1024 * 1024
+    private let maxPDFByteCount: Int64 = 50 * 1024 * 1024
+    private let maxPDFPageCount = 1_000
     private var conversationHistory: [GeminiConversationContent] = []
     private var pendingDroppedFiles: [DroppedFileContext] = []
     private var resultDroppedFileURL: URL?
@@ -228,12 +244,14 @@ final class NudgeOverlayModel: ObservableObject {
         updateResponseProviderTitle(using: requestModel)
         conversationHistory.removeAll()
         activeFileConversationModel = nil
+        loadingStatusText = shouldUseFilesAPI(for: pendingDroppedFiles) ? "파일 업로드 중" : nil
         state = .loading
 
         Task {
             do {
                 let droppedFiles = pendingDroppedFiles
-                let fileRequests = try loadFileRequests(from: droppedFiles, prompt: finalPrompt)
+                let fileRequests = try await loadFileRequests(from: droppedFiles, prompt: finalPrompt)
+                loadingStatusText = shouldUseFilesAPI(for: droppedFiles) ? "분석 준비 중" : nil
                 let fileContent = GeminiConversationContent.userFileParts(
                     prompt: finalPrompt,
                     fileParts: fileRequests.flatMap(\.parts)
@@ -257,6 +275,7 @@ final class NudgeOverlayModel: ObservableObject {
             }
 
             isLoading = false
+            loadingStatusText = nil
             state = .result
             if errorMessage == nil {
                 startTypingResponse(responseText)
@@ -287,6 +306,7 @@ final class NudgeOverlayModel: ObservableObject {
         submittedPrompt = ""
         prompt = ""
         isLoading = false
+        loadingStatusText = nil
         responseProviderTitle = "Gemini"
         conversationHistory.removeAll()
         activeFileConversationModel = nil
@@ -338,6 +358,7 @@ final class NudgeOverlayModel: ObservableObject {
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
+        loadingStatusText = nil
         state = .result
 
         Task {
@@ -367,7 +388,9 @@ final class NudgeOverlayModel: ObservableObject {
                     let displayName = displayName(for: contexts)
                     submittedPrompt = "\(displayName) - \(prompt)"
                     updateResponseProviderTitle(using: model)
-                    let fileRequests = try loadFileRequests(from: contexts, prompt: prompt)
+                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "파일 업로드 중" : nil
+                    let fileRequests = try await loadFileRequests(from: contexts, prompt: prompt)
+                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "분석 준비 중" : nil
                     let fileContent = GeminiConversationContent.userFileParts(
                         prompt: prompt,
                         fileParts: fileRequests.flatMap(\.parts)
@@ -390,6 +413,7 @@ final class NudgeOverlayModel: ObservableObject {
             }
 
             isLoading = false
+            loadingStatusText = nil
             if errorMessage == nil {
                 startTypingResponse(responseText)
             }
@@ -446,6 +470,7 @@ final class NudgeOverlayModel: ObservableObject {
         cancelTypingResponse()
         responseText = ""
         displayedResponseText = ""
+        loadingStatusText = nil
         resultStatusKind = nil
     }
 
@@ -466,6 +491,8 @@ final class NudgeOverlayModel: ObservableObject {
             case .apiError:
                 return .genericError
             case .invalidURL, .invalidResponse:
+                return .genericError
+            case .fileUploadFailed, .fileProcessingTimeout:
                 return .genericError
             }
         }
@@ -554,22 +581,30 @@ final class NudgeOverlayModel: ObservableObject {
         }
     }
 
-    private func loadFileRequests(from contexts: [DroppedFileContext], prompt: String) throws -> [DropFileRequest] {
+    private func loadFileRequests(from contexts: [DroppedFileContext], prompt: String) async throws -> [DropFileRequest] {
         var remainingTextCharacterLimit = totalExtractedTextCharacterLimit
-        return try contexts.map {
-            try loadFileRequest(
-                from: $0,
+        let shouldUploadMediaFiles = shouldUseFilesAPI(for: contexts)
+        var requests: [DropFileRequest] = []
+
+        for context in contexts {
+            let request = try await loadFileRequest(
+                from: context,
                 prompt: prompt,
-                remainingTextCharacterLimit: &remainingTextCharacterLimit
+                remainingTextCharacterLimit: &remainingTextCharacterLimit,
+                shouldUploadMediaFiles: shouldUploadMediaFiles
             )
+            requests.append(request)
         }
+
+        return requests
     }
 
     private func loadFileRequest(
         from context: DroppedFileContext,
         prompt: String,
-        remainingTextCharacterLimit: inout Int
-    ) throws -> DropFileRequest {
+        remainingTextCharacterLimit: inout Int,
+        shouldUploadMediaFiles: Bool
+    ) async throws -> DropFileRequest {
         let didStartAccessing = context.url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -579,10 +614,33 @@ final class NudgeOverlayModel: ObservableObject {
 
         switch context.payloadKind {
         case let .image(mimeType):
+            if shouldUploadMediaFiles {
+                let uploadedFile = try await geminiClient.uploadFile(
+                    url: context.url,
+                    mimeType: mimeType,
+                    displayName: context.displayName
+                )
+                return DropFileRequest(parts: [
+                    .fileData(uri: uploadedFile.uri, mimeType: uploadedFile.mimeType)
+                ])
+            }
+
             return DropFileRequest(parts: [
                 .inlineData(try Data(contentsOf: context.url).base64EncodedString(), mimeType: mimeType)
             ])
         case .pdf:
+            try validatePDFLimits(for: context)
+            if shouldUploadMediaFiles {
+                let uploadedFile = try await geminiClient.uploadFile(
+                    url: context.url,
+                    mimeType: "application/pdf",
+                    displayName: context.displayName
+                )
+                return DropFileRequest(parts: [
+                    .fileData(uri: uploadedFile.uri, mimeType: uploadedFile.mimeType)
+                ])
+            }
+
             return DropFileRequest(parts: [
                 .inlineData(try Data(contentsOf: context.url).base64EncodedString(), mimeType: "application/pdf")
             ])
@@ -820,8 +878,27 @@ final class NudgeOverlayModel: ObservableObject {
 
     private func totalFileByteCount(for contexts: [DroppedFileContext]) -> Int64 {
         contexts.reduce(Int64(0)) { partialResult, context in
-            let fileSize = (try? context.url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-            return partialResult + fileSize
+            partialResult + fileByteCount(for: context.url)
+        }
+    }
+
+    private func fileByteCount(for url: URL) -> Int64 {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+    }
+
+    private func shouldUseFilesAPI(for contexts: [DroppedFileContext]) -> Bool {
+        totalFileByteCount(for: contexts) > inlineDataByteThreshold
+    }
+
+    private func validatePDFLimits(for context: DroppedFileContext) throws {
+        guard case .pdf = context.payloadKind else { return }
+        guard fileByteCount(for: context.url) <= maxPDFByteCount else {
+            throw NudgeFileProcessingError.pdfLimitExceeded
+        }
+
+        if let document = PDFDocument(url: context.url),
+           document.pageCount > maxPDFPageCount {
+            throw NudgeFileProcessingError.pdfLimitExceeded
         }
     }
 
