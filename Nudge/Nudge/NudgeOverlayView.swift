@@ -360,12 +360,19 @@ struct NudgeOverlayView: View {
     }
 
     private var loadingView: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             Spacer()
                 .frame(height: 64)
 
             NudgeBreathingGlowCapsule(intensity: settingsStore.glowIntensity.multiplier)
-            .frame(height: 46)
+                .frame(height: 46)
+
+            if let loadingStatusText = model.loadingStatusText {
+                Text(loadingStatusText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.64))
+                    .transition(.opacity)
+            }
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -570,8 +577,19 @@ struct NudgeOverlayView: View {
     }
 
     private var resultLoadingView: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, minHeight: 240)
+        VStack(spacing: 14) {
+            Spacer()
+
+            if let loadingStatusText = model.loadingStatusText {
+                Text(loadingStatusText)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.64))
+                    .transition(.opacity)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     private func resultStatusView(for kind: NudgeResultStatusKind) -> some View {
