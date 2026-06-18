@@ -26,7 +26,7 @@ struct SettingsView: View {
             case .interaction:
                 "Interaction"
             case .animation:
-                "Animation"
+                "Appearance"
             case .reset:
                 "Reset"
             }
@@ -41,7 +41,7 @@ struct SettingsView: View {
             case .interaction:
                 "노치 Hover 감지와 닫힘 동작을 조정합니다."
             case .animation:
-                "Nudge의 움직임과 글로우 강도를 조정합니다."
+                "노치 테마, 움직임, 글로우 강도를 조정합니다."
             case .reset:
                 "저장된 환경설정을 기본값으로 되돌립니다."
             }
@@ -56,7 +56,7 @@ struct SettingsView: View {
             case .interaction:
                 "cursorarrow.motionlines"
             case .animation:
-                "wand.and.rays"
+                "paintpalette"
             case .reset:
                 "arrow.counterclockwise"
             }
@@ -71,7 +71,7 @@ struct SettingsView: View {
             case .interaction:
                 ["Interaction", "Hover", "호버", "마우스", "감지", "민감도", "닫힘", "지연", "입력", "패널"]
             case .animation:
-                ["Animation", "애니메이션", "속도", "글로우", "효과", "강도", "빛", "전환"]
+                ["Appearance", "Animation", "애니메이션", "속도", "글로우", "효과", "강도", "빛", "전환", "테마", "Glass", "Mono", "Gemini Glow", "색상", "투명도"]
             case .reset:
                 ["Reset", "초기화", "기본값", "되돌리기", "리셋"]
             }
@@ -94,6 +94,7 @@ struct SettingsView: View {
     @State private var apiKeyMessage: String?
     @State private var resetMessage: String?
     @Namespace private var geminiModelSettingsNamespace
+    @Namespace private var notchThemeSettingsNamespace
 
     private var filteredSections: [SettingsSectionID] {
         SettingsSectionID.allCases.filter { $0.matches(searchText) }
@@ -434,21 +435,39 @@ struct SettingsView: View {
     }
 
     private var animationSection: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Picker("애니메이션 속도", selection: $settingsStore.animationSpeed) {
-                    ForEach(NudgeSettingsStore.AnimationSpeed.allCases) { speed in
-                        Text(speed.title).tag(speed)
-                    }
-                }
-                settingHelpText("노치가 열리고 닫히는 상태 전환 움직임의 속도를 조정합니다.")
+        VStack(spacing: 14) {
+            settingsCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("노치 테마")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
 
-                Picker("글로우 효과 강도", selection: $settingsStore.glowIntensity) {
-                    ForEach(NudgeSettingsStore.GlowIntensity.allCases) { intensity in
-                        Text(intensity.title).tag(intensity)
+                    settingHelpText("노치 표면, 입력창, 진행률 바, loading glow 색감을 선택합니다.")
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(NudgeSettingsStore.NotchTheme.allCases) { theme in
+                            notchThemeOptionButton(theme)
+                        }
                     }
                 }
-                settingHelpText("Loading 및 Result 상태에서 표시되는 그라데이션 빛의 강도를 조정합니다.")
+            }
+
+            settingsCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Picker("애니메이션 속도", selection: $settingsStore.animationSpeed) {
+                        ForEach(NudgeSettingsStore.AnimationSpeed.allCases) { speed in
+                            Text(speed.title).tag(speed)
+                        }
+                    }
+                    settingHelpText("노치가 열리고 닫히는 상태 전환 움직임의 속도를 조정합니다.")
+
+                    Picker("글로우 효과 강도", selection: $settingsStore.glowIntensity) {
+                        ForEach(NudgeSettingsStore.GlowIntensity.allCases) { intensity in
+                            Text(intensity.title).tag(intensity)
+                        }
+                    }
+                    settingHelpText("Loading 및 Result 상태에서 표시되는 그라데이션 빛의 강도를 조정합니다.")
+                }
             }
         }
     }
@@ -582,16 +601,83 @@ struct SettingsView: View {
         .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.selectedModel)
     }
 
+    private func notchThemeOptionButton(_ theme: NudgeSettingsStore.NotchTheme) -> some View {
+        let isSelected = settingsStore.notchTheme == theme
+        let palette = theme.palette
+
+        return Button {
+            withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24)) {
+                settingsStore.notchTheme = theme
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(palette.glowGradient)
+                        .frame(width: 34, height: 22)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(palette.strokeColor.opacity(0.24), lineWidth: 1)
+                        }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(theme.title)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.92))
+
+                        Text(theme.description)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.50))
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(palette.glowGradient)
+                    }
+                }
+
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(palette.surfaceColor.opacity(palette.surfaceOpacity))
+                    .frame(height: 28)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(palette.strokeColor.opacity(palette.strokeOpacity + 0.06), lineWidth: 1)
+                    }
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(palette.glowGradient)
+                            .frame(height: 2)
+                            .blur(radius: 2)
+                            .opacity(0.70)
+                    }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(palette.glowGradient, lineWidth: 1.2)
+                                .matchedGeometryEffect(id: "selectedNotchTheme", in: notchThemeSettingsNamespace)
+                        } else {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                        }
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.notchTheme)
+    }
+
     private var settingsBackground: some View {
-        LinearGradient(
-            colors: [
-                Color.black,
-                Color(red: 0.05, green: 0.04, blue: 0.08),
-                Color(red: 0.02, green: 0.02, blue: 0.03)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        settingsStore.notchTheme.palette.settingsBackgroundGradient
         .ignoresSafeArea()
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -612,16 +698,7 @@ struct SettingsView: View {
     }
 
     private var nudgeGlowGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.25, green: 0.73, blue: 1.0),
-                Color(red: 0.57, green: 0.45, blue: 1.0),
-                Color(red: 1.0, green: 0.42, blue: 0.78),
-                Color(red: 1.0, green: 0.64, blue: 0.36)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+        settingsStore.notchTheme.palette.glowGradient
     }
 
     private func saveAPIKey() {
