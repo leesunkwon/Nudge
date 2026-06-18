@@ -77,7 +77,8 @@ struct GeminiClient {
     func uploadFile(
         url fileURL: URL,
         mimeType: String,
-        displayName: String
+        displayName: String,
+        onProgress: ((Double) -> Void)? = nil
     ) async throws -> GeminiUploadedFile {
         let apiKey = try resolveAPIKey()
         let fileData = try Data(contentsOf: fileURL)
@@ -111,7 +112,12 @@ struct GeminiClient {
         uploadRequest.setValue("upload, finalize", forHTTPHeaderField: "X-Goog-Upload-Command")
         uploadRequest.httpBody = fileData
 
-        let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
+        let progressDelegate = GeminiUploadProgressDelegate(onProgress: onProgress)
+        let (uploadData, uploadResponse) = try await session.upload(
+            for: uploadRequest,
+            from: fileData,
+            delegate: progressDelegate
+        )
         guard let uploadHTTPResponse = uploadResponse as? HTTPURLResponse,
               (200..<300).contains(uploadHTTPResponse.statusCode) else {
             throw GeminiError.fileUploadFailed
@@ -309,6 +315,26 @@ struct GeminiUploadedFile: Decodable {
         uri = try container.decode(String.self, forKey: .uri)
         mimeType = try container.decode(String.self, forKey: .mimeType)
         state = try container.decodeIfPresent(State.self, forKey: .state) ?? .active
+    }
+}
+
+private final class GeminiUploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    private let onProgress: ((Double) -> Void)?
+
+    init(onProgress: ((Double) -> Void)?) {
+        self.onProgress = onProgress
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        let progress = min(1, max(0, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
+        onProgress?(progress)
     }
 }
 

@@ -54,6 +54,8 @@ final class NudgeOverlayModel: ObservableObject {
     @Published var displayedResponseText = ""
     @Published var errorMessage: String?
     @Published private(set) var loadingStatusText: String?
+    @Published private(set) var uploadProgress: Double?
+    @Published private(set) var filePromptNoticeText: String?
     @Published private(set) var toastMessage: String?
     @Published private(set) var resultStatusKind: NudgeResultStatusKind?
     @Published var isLoading = false
@@ -102,6 +104,10 @@ final class NudgeOverlayModel: ObservableObject {
         lastRequest != nil && !isLoading
     }
 
+    var isCancellableLoading: Bool {
+        isLoading && requestTask != nil
+    }
+
     private let geminiClient: GeminiClient
     private let settingsStore: NudgeSettingsStore
     private let totalExtractedTextCharacterLimit = 300_000
@@ -115,6 +121,8 @@ final class NudgeOverlayModel: ObservableObject {
     private var resultDroppedFileURL: URL?
     private var activeFileConversationModel: NudgeSettingsStore.GeminiModel?
     private var lastRequest: LastRequest?
+    private var loadingCancelState: NudgeOverlayState = .normal
+    private var requestTask: Task<Void, Never>?
     private var typingTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     var onOpenSettings: (() -> Void)?
@@ -137,9 +145,13 @@ final class NudgeOverlayModel: ObservableObject {
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
+        loadingStatusText = "답변 생성 중"
+        loadingCancelState = shouldKeepResultPanelOpen ? .result : .normal
         state = shouldKeepResultPanelOpen ? .result : .loading
 
-        Task {
+        requestTask?.cancel()
+        requestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
                 if isFileConversationActive {
                     let requestModel = resolvedModelForFileFollowUp(prompt: trimmedPrompt)
@@ -171,11 +183,15 @@ final class NudgeOverlayModel: ObservableObject {
 
                 displayedResponseText = ""
                 errorMessage = nil
+            } catch where isCancellationError(error) {
+                return
             } catch {
                 setError(error)
             }
 
             isLoading = false
+            loadingStatusText = nil
+            requestTask = nil
             state = .result
             if errorMessage == nil {
                 startTypingResponse(responseText)
@@ -227,6 +243,10 @@ final class NudgeOverlayModel: ObservableObject {
 
     func submitFilePrompt() {
         guard !isLoading, !pendingDroppedFiles.isEmpty else { return }
+        guard filePromptBlockingMessage(for: pendingDroppedFiles) == nil else {
+            filePromptNoticeText = NudgeFileProcessingError.pdfLimitExceeded.localizedDescription
+            return
+        }
 
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalPrompt = requestPrompt(
@@ -235,8 +255,8 @@ final class NudgeOverlayModel: ObservableObject {
             userQuestion: trimmedPrompt.isEmpty ? settingsStore.emptyFileQuestionPrompt : trimmedPrompt
         )
         let fileSummary = droppedFileDisplayName.isEmpty ? droppedFileName : droppedFileDisplayName
+        let originalPrompt = prompt
         submittedPrompt = "\(fileSummary) - \(finalPrompt)"
-        prompt = ""
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
@@ -244,14 +264,20 @@ final class NudgeOverlayModel: ObservableObject {
         updateResponseProviderTitle(using: requestModel)
         conversationHistory.removeAll()
         activeFileConversationModel = nil
-        loadingStatusText = shouldUseFilesAPI(for: pendingDroppedFiles) ? "파일 업로드 중" : nil
+        let willUseFilesAPI = shouldUseFilesAPI(for: pendingDroppedFiles)
+        uploadProgress = willUseFilesAPI ? 0 : nil
+        loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "답변 생성 중"
+        loadingCancelState = .filePrompt
         state = .loading
 
-        Task {
+        requestTask?.cancel()
+        requestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
                 let droppedFiles = pendingDroppedFiles
                 let fileRequests = try await loadFileRequests(from: droppedFiles, prompt: finalPrompt)
-                loadingStatusText = shouldUseFilesAPI(for: droppedFiles) ? "분석 준비 중" : nil
+                loadingStatusText = shouldUseFilesAPI(for: droppedFiles) ? "분석 준비 중" : "답변 생성 중"
+                uploadProgress = nil
                 let fileContent = GeminiConversationContent.userFileParts(
                     prompt: finalPrompt,
                     fileParts: fileRequests.flatMap(\.parts)
@@ -270,12 +296,18 @@ final class NudgeOverlayModel: ObservableObject {
                 responseText = response
                 displayedResponseText = ""
                 errorMessage = nil
+                prompt = ""
+            } catch where isCancellationError(error) {
+                prompt = originalPrompt
+                return
             } catch {
                 setError(error)
             }
 
             isLoading = false
             loadingStatusText = nil
+            uploadProgress = nil
+            requestTask = nil
             state = .result
             if errorMessage == nil {
                 startTypingResponse(responseText)
@@ -290,6 +322,18 @@ final class NudgeOverlayModel: ObservableObject {
         state = .normal
     }
 
+    func cancelCurrentRequest() {
+        guard isLoading else { return }
+        requestTask?.cancel()
+        requestTask = nil
+        isLoading = false
+        loadingStatusText = nil
+        uploadProgress = nil
+        resetResponseOutput()
+
+        state = loadingCancelState
+    }
+
     func applyFileAnalysisTemplate(_ template: NudgeFileAnalysisTemplate) {
         guard state == .filePrompt, !isLoading else { return }
         selectedFileAnalysisTemplateID = template.id
@@ -297,6 +341,8 @@ final class NudgeOverlayModel: ObservableObject {
     }
 
     func closeResult() {
+        requestTask?.cancel()
+        requestTask = nil
         cancelTypingResponse()
         dismissToast()
         responseText = ""
@@ -307,6 +353,7 @@ final class NudgeOverlayModel: ObservableObject {
         prompt = ""
         isLoading = false
         loadingStatusText = nil
+        uploadProgress = nil
         responseProviderTitle = "Gemini"
         conversationHistory.removeAll()
         activeFileConversationModel = nil
@@ -359,14 +406,18 @@ final class NudgeOverlayModel: ObservableObject {
         errorMessage = nil
         isLoading = true
         loadingStatusText = nil
+        loadingCancelState = .result
         state = .result
 
-        Task {
+        requestTask?.cancel()
+        requestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
                 switch lastRequest {
                 case let .text(prompt, baseHistory, model):
                     submittedPrompt = prompt
                     updateResponseProviderTitle(using: model)
+                    loadingStatusText = "답변 생성 중"
                     let userContent = GeminiConversationContent.userText(prompt)
                     let response = try await geminiClient.generateText(
                         contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
@@ -377,6 +428,7 @@ final class NudgeOverlayModel: ObservableObject {
                 case let .fileFollowUp(prompt, baseHistory, model):
                     submittedPrompt = prompt
                     updateResponseProviderTitle(using: model)
+                    loadingStatusText = "답변 생성 중"
                     let userContent = GeminiConversationContent.userText(prompt)
                     let response = try await geminiClient.generateText(
                         contents: buildRequestContents(baseHistory: baseHistory, userContent: userContent),
@@ -388,9 +440,12 @@ final class NudgeOverlayModel: ObservableObject {
                     let displayName = displayName(for: contexts)
                     submittedPrompt = "\(displayName) - \(prompt)"
                     updateResponseProviderTitle(using: model)
-                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "파일 업로드 중" : nil
+                    let willUseFilesAPI = shouldUseFilesAPI(for: contexts)
+                    uploadProgress = willUseFilesAPI ? 0 : nil
+                    loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "답변 생성 중"
                     let fileRequests = try await loadFileRequests(from: contexts, prompt: prompt)
-                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "분석 준비 중" : nil
+                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "분석 준비 중" : "답변 생성 중"
+                    uploadProgress = nil
                     let fileContent = GeminiConversationContent.userFileParts(
                         prompt: prompt,
                         fileParts: fileRequests.flatMap(\.parts)
@@ -408,12 +463,16 @@ final class NudgeOverlayModel: ObservableObject {
 
                 displayedResponseText = ""
                 errorMessage = nil
+            } catch where isCancellationError(error) {
+                return
             } catch {
                 setError(error)
             }
 
             isLoading = false
             loadingStatusText = nil
+            uploadProgress = nil
+            requestTask = nil
             if errorMessage == nil {
                 startTypingResponse(responseText)
             }
@@ -471,6 +530,7 @@ final class NudgeOverlayModel: ObservableObject {
         responseText = ""
         displayedResponseText = ""
         loadingStatusText = nil
+        uploadProgress = nil
         resultStatusKind = nil
     }
 
@@ -520,6 +580,19 @@ final class NudgeOverlayModel: ObservableObject {
         }
 
         return .genericError
+    }
+
+    private func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        if let urlError = error as? URLError,
+           urlError.code == .cancelled {
+            return true
+        }
+
+        return (error as NSError).code == NSUserCancelledError
     }
 
     private func buildRequestContents(
@@ -584,16 +657,32 @@ final class NudgeOverlayModel: ObservableObject {
     private func loadFileRequests(from contexts: [DroppedFileContext], prompt: String) async throws -> [DropFileRequest] {
         var remainingTextCharacterLimit = totalExtractedTextCharacterLimit
         let shouldUploadMediaFiles = shouldUseFilesAPI(for: contexts)
+        let totalUploadBytes = shouldUploadMediaFiles ? totalFilesAPIUploadByteCount(for: contexts) : 0
+        var completedUploadBytes: Int64 = 0
         var requests: [DropFileRequest] = []
 
         for context in contexts {
+            let currentFileByteCount = fileByteCount(for: context.url)
+            let completedUploadBytesBeforeCurrentFile = completedUploadBytes
             let request = try await loadFileRequest(
                 from: context,
                 prompt: prompt,
                 remainingTextCharacterLimit: &remainingTextCharacterLimit,
-                shouldUploadMediaFiles: shouldUploadMediaFiles
+                shouldUploadMediaFiles: shouldUploadMediaFiles,
+                onUploadProgress: { [weak self] progress in
+                    guard totalUploadBytes > 0 else { return }
+                    let currentUploadedBytes = Int64(Double(currentFileByteCount) * progress)
+                    let totalProgress = Double(completedUploadBytesBeforeCurrentFile + currentUploadedBytes) / Double(totalUploadBytes)
+                    Task { @MainActor in
+                        self?.updateUploadProgress(totalProgress)
+                    }
+                }
             )
             requests.append(request)
+            if shouldUploadMediaFiles, context.payloadKind.isFilesAPIUploadCandidate {
+                completedUploadBytes += currentFileByteCount
+                updateUploadProgress(Double(completedUploadBytes) / Double(max(totalUploadBytes, 1)))
+            }
         }
 
         return requests
@@ -603,7 +692,8 @@ final class NudgeOverlayModel: ObservableObject {
         from context: DroppedFileContext,
         prompt: String,
         remainingTextCharacterLimit: inout Int,
-        shouldUploadMediaFiles: Bool
+        shouldUploadMediaFiles: Bool,
+        onUploadProgress: @escaping (Double) -> Void
     ) async throws -> DropFileRequest {
         let didStartAccessing = context.url.startAccessingSecurityScopedResource()
         defer {
@@ -618,7 +708,8 @@ final class NudgeOverlayModel: ObservableObject {
                 let uploadedFile = try await geminiClient.uploadFile(
                     url: context.url,
                     mimeType: mimeType,
-                    displayName: context.displayName
+                    displayName: context.displayName,
+                    onProgress: onUploadProgress
                 )
                 return DropFileRequest(parts: [
                     .fileData(uri: uploadedFile.uri, mimeType: uploadedFile.mimeType)
@@ -634,7 +725,8 @@ final class NudgeOverlayModel: ObservableObject {
                 let uploadedFile = try await geminiClient.uploadFile(
                     url: context.url,
                     mimeType: "application/pdf",
-                    displayName: context.displayName
+                    displayName: context.displayName,
+                    onProgress: onUploadProgress
                 )
                 return DropFileRequest(parts: [
                     .fileData(uri: uploadedFile.uri, mimeType: uploadedFile.mimeType)
@@ -829,6 +921,7 @@ final class NudgeOverlayModel: ObservableObject {
         droppedFileCount = 0
         fileAnalysisTemplates = []
         selectedFileAnalysisTemplateID = nil
+        filePromptNoticeText = nil
         canOpenDroppedFile = false
     }
 
@@ -860,6 +953,7 @@ final class NudgeOverlayModel: ObservableObject {
             }
         droppedFilePreviewThumbnail = droppedFilePreviewThumbnails.first
         fileAnalysisTemplates = analysisTemplates(for: contexts)
+        filePromptNoticeText = filePromptNotice(for: contexts)
     }
 
     private func fileSizeText(for url: URL) -> String {
@@ -888,6 +982,41 @@ final class NudgeOverlayModel: ObservableObject {
 
     private func shouldUseFilesAPI(for contexts: [DroppedFileContext]) -> Bool {
         totalFileByteCount(for: contexts) > inlineDataByteThreshold
+    }
+
+    private func totalFilesAPIUploadByteCount(for contexts: [DroppedFileContext]) -> Int64 {
+        contexts.reduce(Int64(0)) { partialResult, context in
+            guard context.payloadKind.isFilesAPIUploadCandidate else { return partialResult }
+            return partialResult + fileByteCount(for: context.url)
+        }
+    }
+
+    private func updateUploadProgress(_ progress: Double) {
+        let clampedProgress = min(1, max(0, progress))
+        uploadProgress = clampedProgress
+        loadingStatusText = "파일 업로드 중 \(Int((clampedProgress * 100).rounded()))%"
+    }
+
+    private func filePromptBlockingMessage(for contexts: [DroppedFileContext]) -> String? {
+        contexts.first { context in
+            guard case .pdf = context.payloadKind else { return false }
+            return (try? validatePDFLimits(for: context)) == nil
+        }.map { _ in
+            NudgeFileProcessingError.pdfLimitExceeded.localizedDescription
+        }
+    }
+
+    private func filePromptNotice(for contexts: [DroppedFileContext]) -> String? {
+        if let blockingMessage = filePromptBlockingMessage(for: contexts) {
+            return blockingMessage
+        }
+
+        if shouldUseFilesAPI(for: contexts),
+           contexts.contains(where: { $0.payloadKind.isFilesAPIUploadCandidate }) {
+            return "큰 파일입니다. 업로드 후 분석합니다."
+        }
+
+        return nil
     }
 
     private func validatePDFLimits(for context: DroppedFileContext) throws {
@@ -1187,6 +1316,15 @@ private enum DropFilePayloadKind {
             case .excel:
                 "스프레드시트를 놓아주세요"
             }
+        }
+    }
+
+    var isFilesAPIUploadCandidate: Bool {
+        switch self {
+        case .image, .pdf:
+            true
+        case .text, .code, .office:
+            false
         }
     }
 

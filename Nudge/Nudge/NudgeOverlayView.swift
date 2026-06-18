@@ -189,6 +189,21 @@ struct NudgeOverlayView: View {
                     .padding(.top, 14)
             }
 
+            if let filePromptNoticeText = model.filePromptNoticeText {
+                HStack(spacing: 7) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11, weight: .semibold))
+
+                    Text(filePromptNoticeText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .foregroundStyle(Color.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 12)
+            }
+
             HStack(spacing: 12) {
                 gradientPromptField(
                     placeholder: "\(model.droppedFileDisplayName)에게 물어보기...",
@@ -367,12 +382,7 @@ struct NudgeOverlayView: View {
             NudgeBreathingGlowCapsule(intensity: settingsStore.glowIntensity.multiplier)
                 .frame(height: 46)
 
-            if let loadingStatusText = model.loadingStatusText {
-                Text(loadingStatusText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.64))
-                    .transition(.opacity)
-            }
+            loadingStatusControls(textSize: 12, progressMaxWidth: nil)
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
@@ -568,7 +578,11 @@ struct NudgeOverlayView: View {
             .help("Copy")
 
             headerIconButton(systemName: "xmark") {
-                model.closeResult()
+                if model.isLoading {
+                    model.cancelCurrentRequest()
+                } else {
+                    model.closeResult()
+                }
             }
             .help("Close")
         }
@@ -580,16 +594,80 @@ struct NudgeOverlayView: View {
         VStack(spacing: 14) {
             Spacer()
 
-            if let loadingStatusText = model.loadingStatusText {
-                Text(loadingStatusText)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.64))
-                    .transition(.opacity)
-            }
+            loadingStatusControls(textSize: 13, progressMaxWidth: 280)
 
             Spacer()
         }
         .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    private func loadingStatusControls(textSize: CGFloat, progressMaxWidth: CGFloat?) -> some View {
+        VStack(spacing: 8) {
+            if let loadingStatusText = model.loadingStatusText {
+                Text(loadingStatusText)
+                    .font(.system(size: textSize, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.64))
+                    .transition(.opacity)
+            }
+
+            if let uploadProgress = model.uploadProgress {
+                uploadProgressBar(uploadProgress)
+                    .frame(maxWidth: progressMaxWidth)
+                    .transition(.opacity)
+            }
+
+            if model.isCancellableLoading {
+                loadingCancelButton
+                    .padding(.top, -1)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func uploadProgressBar(_ progress: Double) -> some View {
+        GeometryReader { proxy in
+            let clampedProgress = min(1, max(0, progress))
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+
+                Capsule(style: .continuous)
+                    .fill(nudgeGlowGradient)
+                    .frame(width: max(8, proxy.size.width * clampedProgress))
+                    .shadow(color: Color.white.opacity(0.22), radius: 5, y: 1)
+            }
+        }
+        .frame(height: 5)
+        .animation(.easeOut(duration: 0.18), value: progress)
+    }
+
+    private var loadingCancelButton: some View {
+        Button {
+            model.cancelCurrentRequest()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+
+                Text("취소")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.white.opacity(0.82))
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+            }
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help("Cancel")
     }
 
     private func resultStatusView(for kind: NudgeResultStatusKind) -> some View {
