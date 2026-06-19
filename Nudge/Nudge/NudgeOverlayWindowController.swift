@@ -23,6 +23,11 @@ final class NudgeOverlayWindowController: NSObject {
     private let settingsStore: NudgeSettingsStore
     private let onOpenSettings: () -> Void
     private let overlayModel: NudgeOverlayModel
+    private(set) var isPaused = false
+
+    var currentModelStatusText: String {
+        overlayModel.currentModelStatusText
+    }
 
     private lazy var panel: NSPanel = {
         let initialFrame = windowFrame(for: overlayState.size)
@@ -107,7 +112,39 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     func showOverlay() {
+        isPaused = false
         positionPanel(animated: false)
+        panel.orderFrontRegardless()
+        installMouseMonitors()
+    }
+
+    func pauseOverlay() {
+        guard !isPaused else { return }
+
+        isPaused = true
+        pendingCollapseWorkItem?.cancel()
+        pendingCollapseWorkItem = nil
+        stopHoverStateCheckTimer()
+        removeMouseMonitors()
+        overlayModel.cancelAndResetForPause()
+        overlayState = .normal
+        panel.ignoresMouseEvents = true
+        panel.resignKey()
+        positionPanel(animated: false)
+        panel.orderOut(nil)
+    }
+
+    func resumeOverlay() {
+        guard isPaused else { return }
+
+        isPaused = false
+        pendingCollapseWorkItem?.cancel()
+        pendingCollapseWorkItem = nil
+        stopHoverStateCheckTimer()
+        overlayModel.cancelAndResetForPause()
+        overlayState = .normal
+        positionPanel(animated: false)
+        panel.ignoresMouseEvents = false
         panel.orderFrontRegardless()
         installMouseMonitors()
     }
@@ -135,6 +172,7 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     @objc private func screenParametersDidChange(_ notification: Notification) {
+        guard !isPaused else { return }
         positionPanel(animated: false)
     }
 
@@ -168,6 +206,8 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func updateHoverState(for mouseLocation: NSPoint) {
+        guard !isPaused else { return }
+
         switch overlayState {
         case .normal:
             guard activationFrame.contains(mouseLocation) else { return }
@@ -215,6 +255,7 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func transition(to nextState: NudgeOverlayState) {
+        guard !isPaused else { return }
         guard nextState != overlayState else { return }
 
         overlayState = nextState
@@ -251,7 +292,7 @@ final class NudgeOverlayWindowController: NSObject {
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    if overlayState != .normal {
+                    if !isPaused && overlayState != .normal {
                         positionPanel(animated: false)
                     }
                 }
@@ -260,6 +301,11 @@ final class NudgeOverlayWindowController: NSObject {
     }
 
     private func syncPanel(to nextState: NudgeOverlayState) {
+        guard !isPaused else {
+            overlayState = .normal
+            return
+        }
+
         guard nextState != overlayState else { return }
 
         overlayState = nextState
