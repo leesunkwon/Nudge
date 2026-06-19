@@ -108,6 +108,19 @@ final class NudgeOverlayModel: ObservableObject {
         isLoading && requestTask != nil
     }
 
+    var currentModelStatusText: String {
+        switch settingsStore.selectedModel {
+        case .auto:
+            guard responseProviderTitle.hasPrefix("Gemini · 자동 · ") else {
+                return "자동"
+            }
+
+            return responseProviderTitle.replacingOccurrences(of: "Gemini · ", with: "")
+        case .fast, .advanced:
+            return settingsStore.selectedModel.title
+        }
+    }
+
     private let geminiClient: GeminiClient
     private let settingsStore: NudgeSettingsStore
     private let totalExtractedTextCharacterLimit = 300_000
@@ -332,6 +345,32 @@ final class NudgeOverlayModel: ObservableObject {
         resetResponseOutput()
 
         state = loadingCancelState
+    }
+
+    func cancelAndResetForPause() {
+        requestTask?.cancel()
+        requestTask = nil
+        cancelTypingResponse()
+        dismissToast()
+        pendingDroppedFiles.removeAll()
+        prompt = ""
+        submittedPrompt = ""
+        responseText = ""
+        displayedResponseText = ""
+        errorMessage = nil
+        loadingStatusText = nil
+        uploadProgress = nil
+        filePromptNoticeText = nil
+        toastMessage = nil
+        resultStatusKind = nil
+        isLoading = false
+        loadingCancelState = .normal
+        responseProviderTitle = "Gemini"
+        conversationHistory.removeAll()
+        activeFileConversationModel = nil
+        clearDroppedFileState()
+        lastRequest = nil
+        state = .normal
     }
 
     func applyFileAnalysisTemplate(_ template: NudgeFileAnalysisTemplate) {
