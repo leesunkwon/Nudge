@@ -74,6 +74,9 @@ Xcode에서 `Nudge` scheme을 선택한 뒤 실행합니다.
 처음 실행 후 메뉴바의 Nudge 아이콘 또는 Result 패널의 설정 메뉴에서 Gemini API Key를 Keychain에 저장할 수도 있습니다.
 앱은 Keychain에 저장된 키를 우선 사용합니다.
 
+<img width="872" height="764" alt="image" src="https://github.com/user-attachments/assets/1edaf7ee-7cdf-4dfe-a396-8860722b6888" />
+
+
 ## 사용 방법
 
 ### 질문하기
