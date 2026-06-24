@@ -638,13 +638,20 @@ final class NudgeOverlayModel: ObservableObject {
         baseHistory: [GeminiConversationContent],
         userContent: GeminiConversationContent
     ) -> [GeminiConversationContent] {
-        let systemPrompt = settingsStore.textSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !systemPrompt.isEmpty else {
+        let systemInstructions = [
+            settingsStore.textSystemPrompt,
+            settingsStore.responseTone.instruction
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+
+        guard !systemInstructions.isEmpty else {
             return baseHistory + [userContent]
         }
 
         return [
-            GeminiConversationContent.userText("시스템 지침:\n\(systemPrompt)")
+            GeminiConversationContent.userText("시스템 지침:\n\(systemInstructions)")
         ] + baseHistory + [userContent]
     }
 

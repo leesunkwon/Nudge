@@ -67,7 +67,7 @@ struct SettingsView: View {
             case .ai:
                 ["AI", "API", "Key", "Gemini", "제미나이", "키", "모델", "자동", "빠름", "고급"]
             case .prompt:
-                ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구"]
+                ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구", "톤", "말투", "간단", "친절", "전문가", "스타일"]
             case .interaction:
                 ["Interaction", "Hover", "호버", "마우스", "감지", "민감도", "닫힘", "지연", "입력", "패널"]
             case .animation:
@@ -95,6 +95,7 @@ struct SettingsView: View {
     @State private var resetMessage: String?
     @Namespace private var geminiModelSettingsNamespace
     @Namespace private var notchThemeSettingsNamespace
+    @Namespace private var responseToneSettingsNamespace
 
     private var filteredSections: [SettingsSectionID] {
         SettingsSectionID.allCases.filter { $0.matches(searchText) }
@@ -386,6 +387,22 @@ struct SettingsView: View {
     private var promptSection: some View {
         settingsCard {
             VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("답변 톤")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
+
+                    settingHelpText("Gemini 프롬프트를 직접 수정하지 않아도 답변의 말투와 깊이를 조정합니다.")
+
+                    HStack(spacing: 10) {
+                        ForEach(NudgeSettingsStore.ResponseTone.allCases) { tone in
+                            responseToneOptionButton(tone)
+                        }
+                    }
+                }
+
+                Divider()
+
                 promptEditor("일반 텍스트 질문 기본 성격", text: $settingsStore.textSystemPrompt)
                 promptEditor("이미지 분석 기본 프롬프트", text: $settingsStore.imageAnalysisPrompt)
                 promptEditor("PDF 분석 기본 프롬프트", text: $settingsStore.pdfAnalysisPrompt)
@@ -599,6 +616,59 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.selectedModel)
+    }
+
+    private func responseToneOptionButton(_ tone: NudgeSettingsStore.ResponseTone) -> some View {
+        let isSelected = settingsStore.responseTone == tone
+
+        return Button {
+            withAnimation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24)) {
+                settingsStore.responseTone = tone
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    Text(tone.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.92))
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(nudgeGlowGradient)
+                    }
+                }
+                .animation(.easeOut(duration: 0.16), value: isSelected)
+
+                Text(tone.description)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.58))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .strokeBorder(nudgeGlowGradient, lineWidth: 1.2)
+                                }
+                                .matchedGeometryEffect(id: "selectedResponseTone", in: responseToneSettingsNamespace)
+                        } else {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                        }
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.responseTone)
     }
 
     private func notchThemeOptionButton(_ theme: NudgeSettingsStore.NotchTheme) -> some View {
