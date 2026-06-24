@@ -179,8 +179,53 @@ final class NudgeSettingsStore: ObservableObject {
         }
     }
 
+    enum ResponseTone: String, CaseIterable, Identifiable {
+        case concise
+        case friendly
+        case expert
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .concise:
+                "간단하게"
+            case .friendly:
+                "친절하게"
+            case .expert:
+                "전문가처럼"
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .concise:
+                "핵심만 짧고 명확하게 답변합니다."
+            case .friendly:
+                "이해하기 쉽게 설명하고 필요한 맥락을 덧붙입니다."
+            case .expert:
+                "더 깊이 있는 분석과 구체적인 근거를 포함합니다."
+            }
+        }
+
+        var instruction: String {
+            switch self {
+            case .concise:
+                "답변은 핵심만 짧고 명확하게 작성해 주세요. 불필요한 배경 설명은 줄이고 바로 실행 가능한 내용 위주로 정리해 주세요."
+            case .friendly:
+                "답변은 이해하기 쉽고 친절하게 작성해 주세요. 필요한 맥락을 덧붙이되 장황하지 않게 정리해 주세요."
+            case .expert:
+                "답변은 전문가 관점에서 깊이 있게 작성해 주세요. 판단 근거, 주의할 점, 실무적으로 중요한 세부사항을 구체적으로 포함해 주세요."
+            }
+        }
+    }
+
     @Published var selectedModel: GeminiModel {
         didSet { defaults.set(selectedModel.rawValue, forKey: Keys.selectedModel) }
+    }
+
+    @Published var responseTone: ResponseTone {
+        didSet { defaults.set(responseTone.rawValue, forKey: Keys.responseTone) }
     }
 
     @Published var textSystemPrompt: String {
@@ -236,6 +281,7 @@ final class NudgeSettingsStore: ObservableObject {
         self.keychainStore = keychainStore
 
         selectedModel = GeminiModel.storedValue(defaults.string(forKey: Keys.selectedModel))
+        responseTone = ResponseTone(rawValue: defaults.string(forKey: Keys.responseTone) ?? "") ?? .friendly
         textSystemPrompt = defaults.string(forKey: Keys.textSystemPrompt) ?? Defaults.textSystemPrompt
         imageAnalysisPrompt = defaults.string(forKey: Keys.imageAnalysisPrompt) ?? Defaults.imageAnalysisPrompt
         pdfAnalysisPrompt = defaults.string(forKey: Keys.pdfAnalysisPrompt) ?? Defaults.pdfAnalysisPrompt
@@ -268,6 +314,7 @@ final class NudgeSettingsStore: ObservableObject {
     }
 
     func resetPrompts() {
+        responseTone = .friendly
         textSystemPrompt = Defaults.textSystemPrompt
         imageAnalysisPrompt = Defaults.imageAnalysisPrompt
         pdfAnalysisPrompt = Defaults.pdfAnalysisPrompt
@@ -287,6 +334,7 @@ final class NudgeSettingsStore: ObservableObject {
 
     private enum Keys {
         static let selectedModel = "selectedModel"
+        static let responseTone = "responseTone"
         static let textSystemPrompt = "textSystemPrompt"
         static let imageAnalysisPrompt = "imageAnalysisPrompt"
         static let pdfAnalysisPrompt = "pdfAnalysisPrompt"
