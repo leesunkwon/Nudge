@@ -189,10 +189,8 @@ struct NudgeOverlayView: View {
             .padding(.horizontal, 4)
             .frame(height: 58)
 
-            if !model.fileAnalysisTemplates.isEmpty {
-                fileTemplateChipsView
-                    .padding(.top, 14)
-            }
+            fileQuestionModeView
+                .padding(.top, 14)
 
             if let filePromptNoticeText = model.filePromptNoticeText {
                 HStack(spacing: 7) {
@@ -211,7 +209,7 @@ struct NudgeOverlayView: View {
 
             HStack(spacing: 12) {
                 gradientPromptField(
-                    placeholder: "\(model.droppedFileDisplayName)에게 물어보기...",
+                    placeholder: model.filePromptPlaceholder,
                     fontSize: 16,
                     isDisabled: false
                 )
@@ -323,18 +321,18 @@ struct NudgeOverlayView: View {
         .clipped()
     }
 
-    private var fileTemplateChipsView: some View {
+    private var fileQuestionModeView: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
-                Image(systemName: "sparkles")
+                Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(nudgeGlowGradient)
 
-                Text("빠른 분석 템플릿")
+                Text("무엇을 할까요?")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.62))
 
-                Text("선택하면 질문창에 채워져요")
+                Text(model.selectedFileQuestionMode.description)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.38))
                     .lineLimit(1)
@@ -342,14 +340,14 @@ struct NudgeOverlayView: View {
 
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    ForEach(model.fileAnalysisTemplates) { template in
+                    ForEach(model.fileQuestionModes) { mode in
                         Button {
-                            model.applyFileAnalysisTemplate(template)
+                            model.selectFileQuestionMode(mode)
                         } label: {
-                            fileTemplateChip(template)
+                            fileQuestionModePill(mode)
                         }
                         .buttonStyle(.plain)
-                        .help("\(template.title) 템플릿을 질문창에 입력")
+                        .help("\(mode.title): \(mode.description)")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -358,10 +356,10 @@ struct NudgeOverlayView: View {
         }
     }
 
-    private func fileTemplateChip(_ template: NudgeFileAnalysisTemplate) -> some View {
-        let isSelected = model.selectedFileAnalysisTemplateID == template.id
+    private func fileQuestionModePill(_ mode: NudgeFileQuestionMode) -> some View {
+        let isSelected = model.selectedFileQuestionMode == mode
 
-        return Text(template.title)
+        return Text(mode.title)
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Color.white.opacity(isSelected ? 0.94 : 0.82))
             .padding(.horizontal, 11)
