@@ -20,12 +20,60 @@ enum NudgeResultStatusKind {
     case empty
 }
 
-struct NudgeFileAnalysisTemplate: Identifiable {
-    let title: String
-    let prompt: String
+enum NudgeFileQuestionMode: String, CaseIterable, Identifiable {
+    case summary
+    case analysis
+    case compare
+    case extract
+    case feedback
 
     var id: String {
-        title
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .summary:
+            "요약"
+        case .analysis:
+            "분석"
+        case .compare:
+            "비교"
+        case .extract:
+            "추출"
+        case .feedback:
+            "피드백"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .summary:
+            "핵심만 빠르게 정리"
+        case .analysis:
+            "구조와 의미를 깊게 확인"
+        case .compare:
+            "차이와 공통점 정리"
+        case .extract:
+            "필요한 정보만 뽑기"
+        case .feedback:
+            "개선점과 의견 제안"
+        }
+    }
+
+    var placeholder: String {
+        switch self {
+        case .summary:
+            "요약 기준을 추가로 입력해 보세요..."
+        case .analysis:
+            "무엇을 중심으로 분석할까요?"
+        case .compare:
+            "무엇을 비교할까요?"
+        case .extract:
+            "어떤 정보를 추출할까요?"
+        case .feedback:
+            "어떤 관점의 피드백이 필요할까요?"
+        }
     }
 }
 
@@ -72,8 +120,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var droppedFilePreviewItems: [NudgeDroppedFilePreviewItem] = []
     @Published private(set) var droppedFileKindLabel = ""
     @Published private(set) var droppedFileCount = 0
-    @Published private(set) var fileAnalysisTemplates: [NudgeFileAnalysisTemplate] = []
-    @Published private(set) var selectedFileAnalysisTemplateID: String?
+    @Published private(set) var selectedFileQuestionMode: NudgeFileQuestionMode = .summary
     @Published private(set) var canOpenDroppedFile = false
 
     var isFileResult: Bool {
@@ -102,6 +149,14 @@ final class NudgeOverlayModel: ObservableObject {
 
     var canRetryLastRequest: Bool {
         lastRequest != nil && !isLoading
+    }
+
+    var fileQuestionModes: [NudgeFileQuestionMode] {
+        NudgeFileQuestionMode.allCases
+    }
+
+    var filePromptPlaceholder: String {
+        selectedFileQuestionMode.placeholder
     }
 
     var isCancellableLoading: Bool {
@@ -265,7 +320,8 @@ final class NudgeOverlayModel: ObservableObject {
         let finalPrompt = requestPrompt(
             for: pendingDroppedFiles,
             settingsStore: settingsStore,
-            userQuestion: trimmedPrompt.isEmpty ? settingsStore.emptyFileQuestionPrompt : trimmedPrompt
+            mode: selectedFileQuestionMode,
+            userQuestion: trimmedPrompt
         )
         let fileSummary = droppedFileDisplayName.isEmpty ? droppedFileName : droppedFileDisplayName
         let originalPrompt = prompt
@@ -373,10 +429,9 @@ final class NudgeOverlayModel: ObservableObject {
         state = .normal
     }
 
-    func applyFileAnalysisTemplate(_ template: NudgeFileAnalysisTemplate) {
+    func selectFileQuestionMode(_ mode: NudgeFileQuestionMode) {
         guard state == .filePrompt, !isLoading else { return }
-        selectedFileAnalysisTemplateID = template.id
-        prompt = template.prompt
+        selectedFileQuestionMode = mode
     }
 
     func closeResult() {
@@ -965,8 +1020,7 @@ final class NudgeOverlayModel: ObservableObject {
         droppedFilePreviewItems = []
         droppedFileKindLabel = ""
         droppedFileCount = 0
-        fileAnalysisTemplates = []
-        selectedFileAnalysisTemplateID = nil
+        selectedFileQuestionMode = .summary
         filePromptNoticeText = nil
         canOpenDroppedFile = false
     }
@@ -998,7 +1052,7 @@ final class NudgeOverlayModel: ObservableObject {
                 return NSImage(contentsOf: context.url)
             }
         droppedFilePreviewThumbnail = droppedFilePreviewThumbnails.first
-        fileAnalysisTemplates = analysisTemplates(for: contexts)
+        selectedFileQuestionMode = contexts.count > 1 ? .compare : .summary
         filePromptNoticeText = filePromptNotice(for: contexts)
     }
 
@@ -1121,15 +1175,20 @@ final class NudgeOverlayModel: ObservableObject {
     private func requestPrompt(
         for contexts: [DroppedFileContext],
         settingsStore: NudgeSettingsStore,
+        mode: NudgeFileQuestionMode,
         userQuestion: String
     ) -> String {
         guard contexts.count > 1 else {
-            return contexts[0].payloadKind.requestPrompt(settingsStore: settingsStore, userQuestion: userQuestion)
+            return contexts[0].payloadKind.requestPrompt(
+                settingsStore: settingsStore,
+                mode: mode,
+                userQuestion: userQuestion
+            )
         }
 
         let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackQuestion = question.isEmpty ? NudgeSettingsStore.Defaults.emptyFileQuestionPrompt : question
         let kind = collectionKind(for: contexts)
+        let fallbackQuestion = question.isEmpty ? mode.defaultQuestion(for: kind) : question
         let basePrompt: String
 
         switch kind {
@@ -1150,58 +1209,12 @@ final class NudgeOverlayModel: ObservableObject {
         return [
             "여러 파일을 함께 분석해 주세요. 파일 간 공통점, 차이점, 연결되는 맥락이 있으면 함께 정리해 주세요.",
             basePrompt,
+            mode.instruction(for: kind),
             "사용자 요청: \(fallbackQuestion)"
         ]
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
         .joined(separator: "\n\n")
-    }
-
-    private func analysisTemplates(for contexts: [DroppedFileContext]) -> [NudgeFileAnalysisTemplate] {
-        switch collectionKind(for: contexts) {
-        case .image:
-            return [
-                NudgeFileAnalysisTemplate(title: "설명", prompt: "이미지의 주요 피사체와 장면을 간단히 설명해줘"),
-                NudgeFileAnalysisTemplate(title: "분위기", prompt: "이미지의 분위기, 색감, 감정적 인상을 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "OCR", prompt: "이미지에서 읽을 수 있는 텍스트를 추출하고 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "디자인 피드백", prompt: "디자인 관점에서 구도, 색감, 가독성, 개선점을 피드백해줘")
-            ]
-        case .pdf:
-            return [
-                NudgeFileAnalysisTemplate(title: "요약", prompt: "PDF의 핵심 내용을 요약해줘"),
-                NudgeFileAnalysisTemplate(title: "목차", prompt: "PDF의 목차와 문서 구조를 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "PDF에서 실행해야 할 액션 아이템을 뽑아줘"),
-                NudgeFileAnalysisTemplate(title: "표 추출", prompt: "PDF 안의 표나 수치 정보를 찾아 정리해줘")
-            ]
-        case .code:
-            return [
-                NudgeFileAnalysisTemplate(title: "코드 설명", prompt: "코드의 목적과 핵심 흐름을 설명해줘"),
-                NudgeFileAnalysisTemplate(title: "개선점", prompt: "코드 품질, 구조, 안정성 관점에서 개선점을 찾아줘"),
-                NudgeFileAnalysisTemplate(title: "리팩토링", prompt: "리팩토링하면 좋은 부분과 방향을 제안해줘"),
-                NudgeFileAnalysisTemplate(title: "버그 위험", prompt: "버그가 날 수 있는 부분이나 엣지 케이스를 찾아줘")
-            ]
-        case .text:
-            return [
-                NudgeFileAnalysisTemplate(title: "요약", prompt: "텍스트의 핵심 내용을 요약해줘"),
-                NudgeFileAnalysisTemplate(title: "핵심 정리", prompt: "중요한 포인트를 항목별로 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "실행해야 할 작업이나 결정 사항을 뽑아줘"),
-                NudgeFileAnalysisTemplate(title: "다듬기", prompt: "문장을 더 자연스럽고 명확하게 다듬어줘")
-            ]
-        case .word, .powerPoint, .excel:
-            return [
-                NudgeFileAnalysisTemplate(title: "요약", prompt: "문서의 핵심 내용을 요약해줘"),
-                NudgeFileAnalysisTemplate(title: "핵심 정리", prompt: "문서의 중요한 포인트를 항목별로 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "액션 아이템", prompt: "문서에서 실행해야 할 액션 아이템을 뽑아줘"),
-                NudgeFileAnalysisTemplate(title: "개선점", prompt: "문서 내용이나 구성을 개선할 부분을 제안해줘")
-            ]
-        case .mixed:
-            return [
-                NudgeFileAnalysisTemplate(title: "요약", prompt: "여러 파일의 핵심 내용을 종합해서 요약해줘"),
-                NudgeFileAnalysisTemplate(title: "비교", prompt: "파일들을 서로 비교해서 중요한 차이를 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "공통점", prompt: "파일들 사이의 공통점을 찾아 정리해줘"),
-                NudgeFileAnalysisTemplate(title: "차이점", prompt: "파일들 사이의 차이점을 중심으로 정리해줘")
-            ]
-        }
     }
 
     private func defaultSaveFileName() -> String {
@@ -1303,6 +1316,65 @@ private enum DropFileCollectionKind {
     }
 }
 
+private extension NudgeFileQuestionMode {
+    func instruction(for kind: DropFileCollectionKind) -> String {
+        switch self {
+        case .summary:
+            return "분석 목적: 파일의 핵심 내용을 짧고 명확하게 요약해 주세요. 중요한 결론과 사용자가 바로 이해해야 할 포인트를 우선해 주세요."
+        case .analysis:
+            return "분석 목적: 파일의 구조, 의미, 중요한 패턴, 놓치기 쉬운 포인트를 깊게 분석해 주세요. 필요한 경우 근거를 함께 정리해 주세요."
+        case .compare:
+            if kind == .mixed {
+                return "분석 목적: 여러 파일 또는 파일 안의 주요 요소를 비교해 공통점, 차이점, 연결되는 맥락을 정리해 주세요."
+            }
+
+            return "분석 목적: 파일 안의 주요 요소를 비교해 차이점, 공통점, 우선순위가 드러나게 정리해 주세요."
+        case .extract:
+            switch kind {
+            case .image:
+                return "분석 목적: 이미지에서 읽을 수 있는 텍스트, 핵심 객체, 중요한 시각 정보를 추출해 정리해 주세요."
+            case .pdf, .word, .powerPoint, .excel:
+                return "분석 목적: 문서에서 핵심 문장, 표, 수치, 액션 아이템, 결정 사항처럼 재사용 가능한 정보를 추출해 주세요."
+            case .code:
+                return "분석 목적: 코드에서 핵심 함수, 의존성, 위험 지점, 개선 포인트를 추출해 주세요."
+            case .text, .mixed:
+                return "분석 목적: 파일에서 중요한 키워드, 항목, 액션 아이템, 재사용 가능한 정보를 추출해 주세요."
+            }
+        case .feedback:
+            switch kind {
+            case .image:
+                return "분석 목적: 디자인, 구도, 색감, 가독성, 사용자 인상 관점에서 개선점과 피드백을 제안해 주세요."
+            case .code:
+                return "분석 목적: 코드 품질, 구조, 안정성, 유지보수성 관점에서 개선 피드백을 제안해 주세요."
+            default:
+                return "분석 목적: 문서 구성, 명확성, 설득력, 누락된 부분, 개선 방향을 중심으로 피드백을 제안해 주세요."
+            }
+        }
+    }
+
+    func defaultQuestion(for kind: DropFileCollectionKind) -> String {
+        switch self {
+        case .summary:
+            return "핵심만 요약해 주세요."
+        case .analysis:
+            return "중요한 구조와 의미를 중심으로 분석해 주세요."
+        case .compare:
+            return kind == .mixed ? "파일들을 비교해 공통점과 차이점을 정리해 주세요." : "주요 요소를 비교해 정리해 주세요."
+        case .extract:
+            switch kind {
+            case .image:
+                return "이미지에서 중요한 정보와 읽을 수 있는 텍스트를 추출해 주세요."
+            case .code:
+                return "코드에서 핵심 흐름, 위험 지점, 개선 포인트를 추출해 주세요."
+            default:
+                return "중요한 정보, 액션 아이템, 표나 수치가 있으면 추출해 주세요."
+            }
+        case .feedback:
+            return "개선할 점과 구체적인 피드백을 제안해 주세요."
+        }
+    }
+}
+
 private enum DropFilePayloadKind {
     case image(mimeType: String)
     case pdf
@@ -1310,33 +1382,37 @@ private enum DropFilePayloadKind {
     case code(fileExtension: String)
     case office(kind: NudgeOfficeDocumentKind)
 
-    func requestPrompt(settingsStore: NudgeSettingsStore, userQuestion: String) -> String {
+    func requestPrompt(
+        settingsStore: NudgeSettingsStore,
+        mode: NudgeFileQuestionMode,
+        userQuestion: String
+    ) -> String {
         let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackQuestion = question.isEmpty ? NudgeSettingsStore.Defaults.emptyFileQuestionPrompt : question
+        let fallbackQuestion = question.isEmpty ? mode.defaultQuestion(for: collectionKind) : question
 
         switch self {
         case .image:
-            return [settingsStore.imageAnalysisPrompt, "사용자 요청: \(fallbackQuestion)"]
+            return [settingsStore.imageAnalysisPrompt, mode.instruction(for: collectionKind), "사용자 요청: \(fallbackQuestion)"]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
         case .pdf:
-            return [settingsStore.pdfAnalysisPrompt, "사용자 요청: \(fallbackQuestion)"]
+            return [settingsStore.pdfAnalysisPrompt, mode.instruction(for: collectionKind), "사용자 요청: \(fallbackQuestion)"]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
         case .text:
-            return ["텍스트 파일의 내용을 바탕으로 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+            return ["텍스트 파일의 내용을 바탕으로 분석해 주세요.", mode.instruction(for: collectionKind), "사용자 요청: \(fallbackQuestion)"]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
         case .code:
-            return ["코드 파일의 내용을 바탕으로 구조, 동작, 개선점을 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+            return ["코드 파일의 내용을 바탕으로 구조, 동작, 개선점을 분석해 주세요.", mode.instruction(for: collectionKind), "사용자 요청: \(fallbackQuestion)"]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
         case .office:
-            return ["문서에서 추출한 텍스트를 바탕으로 분석해 주세요.", "사용자 요청: \(fallbackQuestion)"]
+            return ["문서에서 추출한 텍스트를 바탕으로 분석해 주세요.", mode.instruction(for: collectionKind), "사용자 요청: \(fallbackQuestion)"]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n\n")
