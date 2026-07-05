@@ -15,6 +15,7 @@ struct NudgeOverlayView: View {
     @State private var promptFieldHeight: CGFloat = 46
     @State private var isPromptFocused = false
     @Namespace private var geminiModelPickerNamespace
+    @Namespace private var fileQuestionModeNamespace
 
     private var state: NudgeOverlayState {
         model.state
@@ -342,7 +343,9 @@ struct NudgeOverlayView: View {
                 HStack(spacing: 8) {
                     ForEach(model.fileQuestionModes) { mode in
                         Button {
-                            model.selectFileQuestionMode(mode)
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                model.selectFileQuestionMode(mode)
+                            }
                         } label: {
                             fileQuestionModePill(mode)
                         }
@@ -359,21 +362,47 @@ struct NudgeOverlayView: View {
     private func fileQuestionModePill(_ mode: NudgeFileQuestionMode) -> some View {
         let isSelected = model.selectedFileQuestionMode == mode
 
-        return Text(mode.title)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(isSelected ? 0.94 : 0.82))
-            .padding(.horizontal, 11)
-            .frame(height: 30)
+        return HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(isSelected ? 0.14 : 0.08))
+                    .frame(width: 24, height: 24)
+
+                Image(systemName: mode.iconName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(nudgeGlowGradient) : AnyShapeStyle(Color.white.opacity(0.58)))
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(mode.title)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(isSelected ? 0.96 : 0.76))
+                    .lineLimit(1)
+
+                Text(mode.description)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(isSelected ? 0.58 : 0.38))
+                    .lineLimit(1)
+            }
+        }
+            .padding(.leading, 8)
+            .padding(.trailing, 11)
+            .frame(width: 126, height: 42, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .background {
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(isSelected ? 0.15 : 0.09))
-                    .overlay {
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                isSelected ? AnyShapeStyle(nudgeGlowGradient) : AnyShapeStyle(Color.white.opacity(0.11)),
-                                lineWidth: isSelected ? 1.2 : 1
-                            )
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(isSelected ? themePalette.buttonFillOpacity + 0.08 : themePalette.buttonFillOpacity * 0.72))
+
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(nudgeGlowGradient, lineWidth: 1.15)
+                            .matchedGeometryEffect(id: "fileQuestionModeSelection", in: fileQuestionModeNamespace)
+                    } else {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity + 0.02), lineWidth: 1)
                     }
+                }
             }
     }
 
