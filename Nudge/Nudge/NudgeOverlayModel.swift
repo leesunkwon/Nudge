@@ -61,6 +61,21 @@ enum NudgeFileQuestionMode: String, CaseIterable, Identifiable {
         }
     }
 
+    var iconName: String {
+        switch self {
+        case .summary:
+            "doc.text"
+        case .analysis:
+            "magnifyingglass"
+        case .compare:
+            "arrow.left.arrow.right"
+        case .extract:
+            "line.3.horizontal.decrease.circle"
+        case .feedback:
+            "text.bubble"
+        }
+    }
+
     var placeholder: String {
         switch self {
         case .summary:
