@@ -582,6 +582,10 @@ struct NudgeOverlayView: View {
                         .truncationMode(.middle)
 
                     HStack(spacing: 6) {
+                        if let resultFileQuestionMode = model.resultFileQuestionMode {
+                            resultFileQuestionModePill(resultFileQuestionMode)
+                        }
+
                         Text(model.droppedFileKindLabel)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(nudgeGlowGradient)
@@ -604,6 +608,29 @@ struct NudgeOverlayView: View {
                 .foregroundStyle(Color.white.opacity(0.46))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func resultFileQuestionModePill(_ mode: NudgeFileQuestionMode) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: mode.iconName)
+                .font(.system(size: 8, weight: .bold))
+
+            Text("\(mode.title) 모드")
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(nudgeGlowGradient)
+        .padding(.horizontal, 7)
+        .frame(height: 19)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(themePalette.buttonFillOpacity + 0.03))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(nudgeGlowGradient, lineWidth: 0.8)
+                        .opacity(0.72)
+                }
         }
     }
 
