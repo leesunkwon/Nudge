@@ -136,6 +136,7 @@ final class NudgeOverlayModel: ObservableObject {
     @Published private(set) var droppedFileKindLabel = ""
     @Published private(set) var droppedFileCount = 0
     @Published private(set) var selectedFileQuestionMode: NudgeFileQuestionMode = .summary
+    @Published private(set) var resultFileQuestionMode: NudgeFileQuestionMode?
     @Published private(set) var canOpenDroppedFile = false
 
     var isFileResult: Bool {
@@ -341,17 +342,19 @@ final class NudgeOverlayModel: ObservableObject {
         )
         let fileSummary = droppedFileDisplayName.isEmpty ? droppedFileName : droppedFileDisplayName
         let originalPrompt = prompt
+        let fileQuestionMode = selectedFileQuestionMode
         submittedPrompt = "\(fileSummary) - \(finalPrompt)"
         resetResponseOutput()
         errorMessage = nil
         isLoading = true
+        resultFileQuestionMode = fileQuestionMode
         let requestModel = resolvedModelForFileContexts(pendingDroppedFiles)
         updateResponseProviderTitle(using: requestModel)
         conversationHistory.removeAll()
         activeFileConversationModel = nil
         let willUseFilesAPI = shouldUseFilesAPI(for: pendingDroppedFiles)
         uploadProgress = willUseFilesAPI ? 0 : nil
-        loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "답변 생성 중"
+        loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "파일 읽는 중"
         loadingCancelState = .filePrompt
         state = .loading
 
@@ -361,7 +364,7 @@ final class NudgeOverlayModel: ObservableObject {
             do {
                 let droppedFiles = pendingDroppedFiles
                 let fileRequests = try await loadFileRequests(from: droppedFiles, prompt: finalPrompt)
-                loadingStatusText = shouldUseFilesAPI(for: droppedFiles) ? "분석 준비 중" : "답변 생성 중"
+                loadingStatusText = "Gemini 분석 중"
                 uploadProgress = nil
                 let fileContent = GeminiConversationContent.userFileParts(
                     prompt: finalPrompt,
@@ -375,9 +378,16 @@ final class NudgeOverlayModel: ObservableObject {
                 conversationHistory.append(fileContent)
                 conversationHistory.append(GeminiConversationContent.modelText(response))
                 activeFileConversationModel = requestModel
-                lastRequest = .file(contexts: droppedFiles, prompt: finalPrompt, baseHistory: baseHistory, model: requestModel)
+                lastRequest = .file(
+                    contexts: droppedFiles,
+                    prompt: finalPrompt,
+                    mode: fileQuestionMode,
+                    baseHistory: baseHistory,
+                    model: requestModel
+                )
                 resultDroppedFileURL = droppedFiles.first?.url
                 canOpenDroppedFile = true
+                loadingStatusText = "답변 정리 중"
                 responseText = response
                 displayedResponseText = ""
                 errorMessage = nil
@@ -546,15 +556,16 @@ final class NudgeOverlayModel: ObservableObject {
                     )
                     conversationHistory = baseHistory + [userContent, GeminiConversationContent.modelText(response)]
                     responseText = response
-                case let .file(contexts, prompt, baseHistory, model):
+                case let .file(contexts, prompt, mode, baseHistory, model):
                     let displayName = displayName(for: contexts)
                     submittedPrompt = "\(displayName) - \(prompt)"
+                    resultFileQuestionMode = mode
                     updateResponseProviderTitle(using: model)
                     let willUseFilesAPI = shouldUseFilesAPI(for: contexts)
                     uploadProgress = willUseFilesAPI ? 0 : nil
-                    loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "답변 생성 중"
+                    loadingStatusText = willUseFilesAPI ? "파일 업로드 중 0%" : "파일 읽는 중"
                     let fileRequests = try await loadFileRequests(from: contexts, prompt: prompt)
-                    loadingStatusText = shouldUseFilesAPI(for: contexts) ? "분석 준비 중" : "답변 생성 중"
+                    loadingStatusText = "Gemini 분석 중"
                     uploadProgress = nil
                     let fileContent = GeminiConversationContent.userFileParts(
                         prompt: prompt,
@@ -568,6 +579,7 @@ final class NudgeOverlayModel: ObservableObject {
                     activeFileConversationModel = model
                     resultDroppedFileURL = contexts.first?.url
                     canOpenDroppedFile = true
+                    loadingStatusText = "답변 정리 중"
                     responseText = response
                 }
 
@@ -1039,6 +1051,7 @@ final class NudgeOverlayModel: ObservableObject {
         droppedFileKindLabel = ""
         droppedFileCount = 0
         selectedFileQuestionMode = .summary
+        resultFileQuestionMode = nil
         filePromptNoticeText = nil
         canOpenDroppedFile = false
     }
@@ -1257,7 +1270,13 @@ private struct DroppedFileContext {
 private enum LastRequest {
     case text(prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
     case fileFollowUp(prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
-    case file(contexts: [DroppedFileContext], prompt: String, baseHistory: [GeminiConversationContent], model: NudgeSettingsStore.GeminiModel)
+    case file(
+        contexts: [DroppedFileContext],
+        prompt: String,
+        mode: NudgeFileQuestionMode,
+        baseHistory: [GeminiConversationContent],
+        model: NudgeSettingsStore.GeminiModel
+    )
 }
 
 private enum DropFileCollectionKind {
