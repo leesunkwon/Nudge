@@ -294,6 +294,7 @@ final class NudgeOverlayModel: ObservableObject {
 
     func cancelDragging() {
         guard state == .dragging else { return }
+        clearDroppedFileState()
         state = .normal
     }
 
@@ -1002,11 +1003,13 @@ final class NudgeOverlayModel: ObservableObject {
         let contexts = droppedFileContexts(for: fileURLs)
 
         guard !fileURLs.isEmpty, contexts.count == fileURLs.count else {
+            clearDroppedFileState()
             dragPromptIconName = "exclamationmark.triangle"
             dragPromptText = "지원하지 않는 파일입니다"
             return
         }
 
+        updateDroppedFilesPreview(contexts)
         dragPromptIconName = dragIconName(for: contexts)
         dragPromptText = dropPromptText(for: contexts)
     }
