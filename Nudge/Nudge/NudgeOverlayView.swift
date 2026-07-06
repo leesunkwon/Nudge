@@ -134,24 +134,62 @@ struct NudgeOverlayView: View {
     private var draggingView: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 64)
+                .frame(height: 48)
 
-            HStack(spacing: 10) {
-                Image(systemName: model.dragPromptIconName)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(nudgeGlowGradient)
+            HStack(spacing: 14) {
+                draggingPreviewTile
 
-                Text(model.dragPromptText)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.86))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.dragPromptText)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.88))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Text(model.droppedFileCount > 0 ? "놓으면 분석 준비가 시작돼요" : "지원하는 파일을 다시 가져와 주세요")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.48))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 20)
-            .frame(height: 46)
+            .padding(.horizontal, 18)
+            .frame(height: 66)
             .frame(maxWidth: .infinity)
-            .background(inputBackground(isFocused: false, isDisabled: false))
+            .background {
+                NudgeDropBreathingDropzone(
+                    palette: themePalette,
+                    gradient: nudgeGlowGradient
+                )
+            }
         }
         .padding(.horizontal, 30)
         .transition(.opacity)
+    }
+
+    private var draggingPreviewTile: some View {
+        Group {
+            if model.droppedFileCount > 0 {
+                filePreviewTile
+                    .scaleEffect(0.92)
+                    .shadow(color: themePalette.glowColors.first?.opacity(0.18) ?? Color.clear, radius: 12, y: 3)
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(themePalette.buttonFillOpacity + 0.03))
+                        .overlay {
+                            Circle()
+                                .strokeBorder(themePalette.strokeColor.opacity(themePalette.strokeOpacity + 0.05), lineWidth: 1)
+                        }
+
+                    Image(systemName: model.dragPromptIconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(nudgeGlowGradient)
+                }
+                .frame(width: 48, height: 48)
+            }
+        }
     }
 
     private var filePromptView: some View {
@@ -1304,6 +1342,42 @@ private struct NudgeBreathingGlowCapsule: View {
                 }
                 .scaleEffect(x: 0.985 + breath * 0.015, y: 0.96 + breath * 0.04)
                 .opacity(intensity)
+                .animation(nil, value: breath)
+        }
+    }
+}
+
+private struct NudgeDropBreathingDropzone: View {
+    let palette: NudgeThemePalette
+    let gradient: LinearGradient
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            let breath = (sin(phase * 1.65) + 1) / 2
+            let drift = (sin(phase * 0.82) + 1) / 2
+
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.white.opacity(palette.inputFillOpacity + breath * 0.025))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: palette.glowColors.map { $0.opacity(0.15 + breath * 0.13) },
+                                startPoint: UnitPoint(x: -0.24 + drift * 0.36, y: 0.22),
+                                endPoint: UnitPoint(x: 0.88 + drift * 0.26, y: 0.76)
+                            )
+                        )
+                        .blur(radius: 16 + breath * 4)
+                        .blendMode(.screen)
+                        .padding(.horizontal, 18)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(gradient, lineWidth: 1.05 + breath * 0.45)
+                        .opacity(0.58 + breath * 0.26)
+                }
+                .scaleEffect(x: 0.992 + breath * 0.008, y: 0.976 + breath * 0.024)
                 .animation(nil, value: breath)
         }
     }
