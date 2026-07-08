@@ -399,6 +399,7 @@ struct SettingsView: View {
                             responseToneOptionButton(tone)
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
 
@@ -604,7 +605,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
             .background {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(Color.white.opacity(0.06))
@@ -657,7 +658,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 132, maxHeight: 132, alignment: .topLeading)
             .background {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(Color.white.opacity(0.06))
@@ -678,6 +679,7 @@ struct SettingsView: View {
             }
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
         .animation(.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.24), value: settingsStore.responseTone)
     }
 
