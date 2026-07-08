@@ -67,7 +67,7 @@ struct SettingsView: View {
             case .ai:
                 ["AI", "API", "Key", "Gemini", "제미나이", "키", "모델", "자동", "빠름", "고급"]
             case .prompt:
-                ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구", "톤", "말투", "간단", "친절", "전문가", "스타일"]
+                ["Prompt", "프롬프트", "질문", "텍스트", "이미지", "PDF", "파일", "기본문구", "톤", "말투", "간단", "친절", "전문가", "스타일", "응답 스타일", "기본 지침", "시스템 프롬프트"]
             case .interaction:
                 ["Interaction", "Hover", "호버", "마우스", "감지", "민감도", "닫힘", "지연", "입력", "패널"]
             case .animation:
@@ -385,14 +385,14 @@ struct SettingsView: View {
     }
 
     private var promptSection: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 16) {
+            settingsCard {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("답변 톤")
+                    Text("응답 스타일")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.88))
 
-                    settingHelpText("Gemini 프롬프트를 직접 수정하지 않아도 답변의 말투와 깊이를 조정합니다.")
+                    settingHelpText("답변의 말투와 깊이를 조정합니다. Gemini 프롬프트를 직접 수정하지 않아도 결과 스타일을 바꿀 수 있습니다.")
 
                     HStack(spacing: 10) {
                         ForEach(NudgeSettingsStore.ResponseTone.allCases) { tone in
@@ -400,18 +400,28 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
 
-                Divider()
+            settingsCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("기본 지침")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.88))
 
-                promptEditor("일반 텍스트 질문 기본 성격", text: $settingsStore.textSystemPrompt)
-                promptEditor("이미지 분석 기본 프롬프트", text: $settingsStore.imageAnalysisPrompt)
-                promptEditor("PDF 분석 기본 프롬프트", text: $settingsStore.pdfAnalysisPrompt)
-                promptEditor("빈 파일 질문 기본 문구", text: $settingsStore.emptyFileQuestionPrompt)
+                        settingHelpText("Gemini 요청에 함께 전달되는 기본 프롬프트를 관리합니다.")
+                    }
 
-                Button("기본 프롬프트로 되돌리기") {
-                    settingsStore.resetPrompts()
+                    promptEditor("일반 텍스트 질문 기본 성격", text: $settingsStore.textSystemPrompt)
+                    promptEditor("이미지 분석 기본 프롬프트", text: $settingsStore.imageAnalysisPrompt)
+                    promptEditor("PDF 분석 기본 프롬프트", text: $settingsStore.pdfAnalysisPrompt)
+                    promptEditor("빈 파일 질문 기본 문구", text: $settingsStore.emptyFileQuestionPrompt)
+
+                    Button("기본 프롬프트로 되돌리기") {
+                        settingsStore.resetPrompts()
+                    }
+                    .buttonStyle(NudgeSettingsButtonStyle(kind: .secondary))
                 }
-                .buttonStyle(NudgeSettingsButtonStyle(kind: .secondary))
             }
         }
     }
